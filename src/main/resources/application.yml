@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: life-habit-assistant
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:life_habit_assistant}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  sql:
+    init:
+      mode: never
+server:
+  error:
+    include-message: never
+app:
+  jwt:
+    secret: ${JWT_SECRET:change-this-development-secret-key-to-a-secure-value-123456789}
+    expiration-hours: ${JWT_EXPIRATION_HOURS:24}
+  health:
+    minimum-water-ml: 1500
+    minimum-exercise-minutes: 30
+    minimum-diet-score: 3
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
