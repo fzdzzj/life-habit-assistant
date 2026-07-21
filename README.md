@@ -1,12 +1,98 @@
 # 生活习惯助手 Agent 后端
 
+基于 Spring Boot 3、Java 21 与 MySQL 的 REST 后端。项目聚焦单一普通用户：账号密码登录、每日习惯记录、趋势分析、规则型建议、周报/月报及 Excel/PDF 导出。
+
+## 架构与边界
+
+```text
+common/  统一响应 Result、错误码与全局异常处理
+pojo/    JPA Entity、请求 DTO、响应 VO
+server/
+  controller/ HTTP 接口、参数校验
+  service/    业务编排、事务与报告/建议计算
+  dao/        Spring Data JPA Repository
+config/   JWT、Spring Security 与演示数据配置
+```
+
+- 所有普通 JSON 接口返回 `{"code": 1, "message": "success", "data": ...}`；导出接口返回文件流。
+- 密码使用 BCrypt 哈希；JWT 解析后的当前用户决定每一条查询和写入的归属。
+- 同一用户每天只有一条记录（`user_id + record_date` 唯一约束）；重复提交更新原记录。
+- 周报、月报按请求即时聚合，不保存冗余报告快照。
+
 ## 启动
 
-1. 在 MySQL 中执行 `src/main/resources/db/schema.sql`。
-2. 设置 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USERNAME`、`DB_PASSWORD` 和强随机 `JWT_SECRET`。
-3. 使用 Maven（JDK 21）运行：`mvn spring-boot:run`。
-4. 打开 `http://localhost:8080/swagger-ui.html`，先调用注册、登录接口，再在 Swagger 的 Authorize 中填入 `Bearer <token>`。
+前置条件：JDK 21、Maven、MySQL 8。
 
-## 演示流程
+1. 创建数据库并执行 [schema.sql](src/main/resources/db/schema.sql)。
+2. 设置环境变量：`DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USERNAME`、`DB_PASSWORD`、`JWT_SECRET`。
+3. 运行：
 
-注册 -> 登录 -> 录入每日记录 -> 查询历史/趋势 -> 生成建议 -> 查看周报或月报 -> 下载 xlsx/pdf。
+   ```bash
+   mvn spring-boot:run
+   ```
+
+4. 打开 Swagger：<http://localhost:8080/swagger-ui.html>。
+
+测试命令：
+
+```bash
+mvn test
+```
+
+### 演示数据
+
+启用 `demo` Profile 会生成账号 `demo`、密码 `demo123456` 和最近 35 天记录；已有账号不会被覆盖。
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=demo
+```
+
+## 接口
+
+先调用注册或登录，随后在 Swagger 的 **Authorize** 中填写 `Bearer <token>`。
+
+| 模块 | 方法与路径 | 说明 |
+| --- | --- | --- |
+| 认证 | `POST /api/auth/register` | 注册，返回 JWT |
+| 认证 | `POST /api/auth/login` | 登录，返回 JWT |
+| 每日记录 | `POST /api/habits` | 新建或更新当日记录 |
+| 每日记录 | `GET /api/habits` | 分页和日期范围查询 |
+| 每日记录 | `GET /api/habits/{date}` | 查询单日记录 |
+| 每日记录 | `DELETE /api/habits/{date}` | 删除单日记录 |
+| 趋势 | `GET /api/trends?days=7` | 睡眠、饮食、运动、饮水与连续天数 |
+| 建议 | `POST /api/analyses?days=7` | 规则型风险和建议 |
+| 报告 | `GET /api/reports/weekly?week=YYYY-MM-DD` | 自然周报告 |
+| 报告 | `GET /api/reports/monthly?month=YYYY-MM` | 自然月报告 |
+| 导出 | `GET /api/reports/weekly/export?week=...&format=xlsx|pdf` | 下载周报 |
+| 导出 | `GET /api/reports/monthly/export?month=...&format=xlsx|pdf` | 下载月报 |
+
+`POST /api/habits` 请求示例：
+
+```json
+{
+  "recordDate": "2026-07-21",
+  "bedtime": "23:30",
+  "wakeTime": "07:00",
+  "dietScore": 4,
+  "exerciseMinutes": 45,
+  "waterMl": 1800,
+  "note": "晚饭后散步"
+}
+```
+
+## 演示顺序
+
+注册/登录 → 录入记录 → 查询趋势 → 生成建议 → 查看周报或月报 → 下载 XLSX/PDF。
+
+## 测试覆盖
+
+- 认证：重复用户名、BCrypt 哈希、错误密码。
+- 记录：跨午夜睡眠、同日更新且归属当前用户。
+- 分析：均值、总运动、连续记录、阈值达标。
+- 报告：自然周、闰年月边界、Excel 工作表和 PDF 可打开性。
+
+## Git 协作
+
+每个模块遵循：`Issue → codex/<issue>-<module> → 测试 → Conventional Commit → Push → PR → 合并 → 关闭 Issue`。
+
+仅使用仓库 `fzdzzj/life-habit-assistant`。
