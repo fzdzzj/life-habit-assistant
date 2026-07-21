@@ -20,6 +20,8 @@ app:
     secret: ${JWT_SECRET:change-this-development-secret-key-to-a-secure-value-123456789}
     expiration-hours: ${JWT_EXPIRATION_HOURS:24}
   health:
+    minimum-sleep-minutes: 420
+    maximum-sleep-minutes: 540
     minimum-water-ml: 1500
     minimum-exercise-minutes: 30
     minimum-diet-score: 3
