@@ -71,14 +71,14 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 ```json
 {
   "recordDate": "2026-07-21",
-  "bedtime": "23:30",
-  "wakeTime": "07:00",
   "dietScore": 4,
   "exerciseMinutes": 45,
   "waterMl": 1800,
   "note": "晚饭后散步"
 }
 ```
+
+`recordDate` 是当天归属日。先创建每日记录，再通过独立接口维护睡眠片段：`GET/POST /api/habits/{date}/sleep-sessions`、`PUT/DELETE /api/habits/{date}/sleep-sessions/{id}`。每段以 `sleepType: NIGHT | NAP` 与完整的 `sleepStartAt`、`wakeAt` 表示；未睡时不创建片段。日记录、趋势和报告自动汇总所有片段的睡眠分钟数。
 
 ## 演示顺序
 

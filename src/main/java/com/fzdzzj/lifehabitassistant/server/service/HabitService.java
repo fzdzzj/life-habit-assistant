@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Service
@@ -30,9 +31,9 @@ public class HabitService {
         User user = currentUser.require();
         HabitRecord record = records.findByUserAndRecordDate(user, request.recordDate()).orElse(null);
         if (record == null) {
-            record = new HabitRecord(user, request.recordDate(), request.bedtime(), request.wakeTime(), request.dietScore(), request.exerciseMinutes(), request.waterMl(), request.note());
+            record = new HabitRecord(user, request.recordDate(), request.dietScore(), request.exerciseMinutes(), request.waterMl(), request.note());
         } else {
-            record.update(request.bedtime(), request.wakeTime(), request.dietScore(), request.exerciseMinutes(), request.waterMl(), request.note());
+            record.update(request.dietScore(), request.exerciseMinutes(), request.waterMl(), request.note());
         }
         return toResponse(records.save(record));
     }
@@ -42,7 +43,11 @@ public class HabitService {
         User user = currentUser.require();
         LocalDate safeEnd = end == null ? LocalDate.now() : end;
         LocalDate safeStart = start == null ? safeEnd.minusDays(29) : start;
+        LocalDate today = LocalDate.now();
+        if (safeStart.isAfter(today)) throw new IllegalArgumentException("start 不得晚于今天");
+        if (safeEnd.isAfter(today)) throw new IllegalArgumentException("end 不得晚于今天");
         if (safeStart.isAfter(safeEnd)) throw new IllegalArgumentException("start 不得晚于 end");
+        if (ChronoUnit.DAYS.between(safeStart, safeEnd) > 365) throw new IllegalArgumentException("查询日期范围不得超过 366 天");
         Page<HabitDtos.HabitResponse> result = records.findByUserAndRecordDateBetween(user, safeStart, safeEnd, PageRequest.of(page, size, Sort.by("recordDate").descending())).map(this::toResponse);
         return PageResponse.from(result);
     }
@@ -65,7 +70,7 @@ public class HabitService {
 
     public HabitDtos.HabitResponse toResponse(HabitRecord r) {
         long minutes = r.sleepMinutes();
-        return new HabitDtos.HabitResponse(r.getRecordDate(), r.getBedtime(), r.getWakeTime(), minutes, Math.round(minutes / 6.0) / 10.0, r.getDietScore(), r.getExerciseMinutes(), r.getWaterMl(), r.getNote(), dailyEvaluation(r));
+        return new HabitDtos.HabitResponse(r.getRecordDate(), minutes, Math.round(minutes / 6.0) / 10.0, r.getDietScore(), r.getExerciseMinutes(), r.getWaterMl(), r.getNote(), dailyEvaluation(r));
     }
 
     private String dailyEvaluation(HabitRecord r) {

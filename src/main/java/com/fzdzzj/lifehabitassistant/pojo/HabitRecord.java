@@ -2,9 +2,9 @@ package com.fzdzzj.lifehabitassistant.pojo;
 
 import jakarta.persistence.*;
 
-import java.time.Duration;
 import java.time.LocalDate;
-import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "habit_records", uniqueConstraints = @UniqueConstraint(name = "uk_habit_user_date", columnNames = {"user_id", "record_date"}))
@@ -17,10 +17,9 @@ public class HabitRecord {
     private User user;
     @Column(name = "record_date", nullable = false)
     private LocalDate recordDate;
-    @Column(nullable = false)
-    private LocalTime bedtime;
-    @Column(name = "wake_time", nullable = false)
-    private LocalTime wakeTime;
+    @OneToMany(mappedBy = "habitRecord", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sleepStartAt ASC")
+    private final List<SleepSession> sleepSessions = new ArrayList<>();
     @Column(name = "diet_score", nullable = false)
     private int dietScore;
     @Column(name = "exercise_minutes", nullable = false)
@@ -33,15 +32,13 @@ public class HabitRecord {
     protected HabitRecord() {
     }
 
-    public HabitRecord(User user, LocalDate date, LocalTime bedtime, LocalTime wakeTime, int dietScore, int exerciseMinutes, int waterMl, String note) {
+    public HabitRecord(User user, LocalDate date, int dietScore, int exerciseMinutes, int waterMl, String note) {
         this.user = user;
         this.recordDate = date;
-        update(bedtime, wakeTime, dietScore, exerciseMinutes, waterMl, note);
+        update(dietScore, exerciseMinutes, waterMl, note);
     }
 
-    public void update(LocalTime bedtime, LocalTime wakeTime, int dietScore, int exerciseMinutes, int waterMl, String note) {
-        this.bedtime = bedtime;
-        this.wakeTime = wakeTime;
+    public void update(int dietScore, int exerciseMinutes, int waterMl, String note) {
         this.dietScore = dietScore;
         this.exerciseMinutes = exerciseMinutes;
         this.waterMl = waterMl;
@@ -49,8 +46,11 @@ public class HabitRecord {
     }
 
     public long sleepMinutes() {
-        long minutes = Duration.between(bedtime, wakeTime).toMinutes();
-        return minutes <= 0 ? minutes + 24 * 60 : minutes;
+        return sleepSessions.stream().mapToLong(session -> java.time.Duration.between(session.getSleepStartAt(), session.getWakeAt()).toMinutes()).sum();
+    }
+
+    public void addSleepSession(SleepSession session) {
+        sleepSessions.add(session);
     }
 
     public Long getId() {
@@ -65,12 +65,8 @@ public class HabitRecord {
         return recordDate;
     }
 
-    public LocalTime getBedtime() {
-        return bedtime;
-    }
-
-    public LocalTime getWakeTime() {
-        return wakeTime;
+    public List<SleepSession> getSleepSessions() {
+        return List.copyOf(sleepSessions);
     }
 
     public int getDietScore() {
