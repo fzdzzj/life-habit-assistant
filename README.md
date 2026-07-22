@@ -23,7 +23,7 @@ config/   JWT、Spring Security 与演示数据配置
 
 前置条件：JDK 21、Maven、MySQL 8。
 
-1. 创建数据库并执行 [schema.sql](src/main/resources/db/schema.sql)。
+1. 创建空数据库 `life_habit_assistant`；Flyway 会在应用启动时自动执行迁移。
 2. 设置环境变量：`DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USERNAME`、`DB_PASSWORD`、`JWT_SECRET`。
 3. 运行：
 
@@ -99,11 +99,11 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 
 ## 本地 MySQL 配置
 
-项目通过 `src/main/resources/db/schema.sql` 初始化 `users` 与 `habit_records` 两张表。
+项目通过 Flyway 迁移初始化 `users` 与 `habit_records` 两张表。
 
 1. 创建本地配置文件：`Copy-Item .env.example .env`
 2. 在 `.env` 中填写本机 MySQL 连接信息和 JWT 密钥。
-3. 创建数据库 `life_habit_assistant`，再执行 `src/main/resources/db/schema.sql`。
+3. 创建空数据库 `life_habit_assistant`，再启动应用让 Flyway 自动迁移。
 
 `.env` 已被 Git 忽略，不能提交；`.env.example` 只保留字段模板，不包含真实密码或密钥。
 
@@ -116,3 +116,9 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 ### 分页响应
 
 `GET /api/habits` 的 `data` 固定包含 `content`、`page`、`size`、`totalElements`、`totalPages`，不暴露 Spring Data 的内部 `Page` JSON 结构。
+
+## 数据库迁移
+
+数据库结构由 Flyway 管理，迁移文件位于 `src/main/resources/db/migration/`。新环境只需先创建空数据库，应用启动时会自动执行 `V1__create_initial_schema.sql` 并记录到 `flyway_schema_history`；不再手工执行 SQL 文件。
+
+对于已经用旧版 `schema.sql` 建过表的数据库：仅在第一次启动前设置 `FLYWAY_BASELINE_ON_MIGRATE=true`，让 Flyway 建立基线而不重复执行 V1；启动成功后应删除该变量或改回 `false`。后续表结构调整只能新增 `V2__...sql`、`V3__...sql`，不能修改已经发布的迁移文件。
