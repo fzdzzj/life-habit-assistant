@@ -13,9 +13,8 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
-  sql:
-    init:
-      mode: never
+  flyway:
+    baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:false}
 server:
   error:
     include-message: never
