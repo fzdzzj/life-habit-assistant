@@ -1,0 +1,8 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+  jpa:
+    properties:
+      hibernate:
+        format_sql: true
