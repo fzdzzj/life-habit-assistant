@@ -106,3 +106,9 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 3. 创建数据库 `life_habit_assistant`，再执行 `src/main/resources/db/schema.sql`。
 
 `.env` 已被 Git 忽略，不能提交；`.env.example` 只保留字段模板，不包含真实密码或密钥。
+
+### 运行环境
+
+- 默认启用 `dev` Profile，并读取项目根目录的本地 `.env`。
+- `prod` Profile 关闭 OpenAPI 与 Swagger UI；部署时必须注入 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USERNAME`、`DB_PASSWORD`、`JWT_SECRET`。
+- 生产启动示例：`SPRING_PROFILES_ACTIVE=prod mvn spring-boot:run`。
