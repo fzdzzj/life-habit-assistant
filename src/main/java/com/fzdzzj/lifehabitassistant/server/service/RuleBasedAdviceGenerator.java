@@ -1,7 +1,7 @@
 package com.fzdzzj.lifehabitassistant.server.service;
 
 import com.fzdzzj.lifehabitassistant.pojo.AnalysisDtos;
-import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
+import com.fzdzzj.lifehabitassistant.pojo.HealthStatistics;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -17,16 +17,21 @@ public class RuleBasedAdviceGenerator implements AdviceGenerator {
         this.drinkRules = drinkRules;
     }
 
-    public AnalysisDtos.AnalysisResponse generate(int days, List<HabitRecord> records) {
-        if (records.isEmpty())
-            return new AnalysisDtos.AnalysisResponse(days, 0, "当前周期没有记录，暂时无法形成趋势。", List.of("缺少连续数据"), List.of("请连续记录至少 7 天，再查看个性化建议。"));
-        double sleep = records.stream().mapToLong(HabitRecord::sleepMinutes).average().orElse(0) / 60d;
-        double diet = records.stream().mapToInt(HabitRecord::getDietScore).average().orElse(0);
-        double hydration = records.stream().mapToInt(drinkRules::hydrationMl).average().orElse(0);
-        double exercise = records.stream().mapToInt(HabitRecord::exerciseMinutes).average().orElse(0);
-        int moderateEquivalentMinutes = records.stream().mapToInt(HabitRecord::moderateEquivalentExerciseMinutes).sum();
-        long strengthTrainingCount = records.stream().mapToLong(HabitRecord::strengthExerciseCount).sum();
-        List<String> risks = new ArrayList<>(), suggestions = new ArrayList<>();
+    @Override
+    public AnalysisDtos.AnalysisResponse generate(int days, HealthStatistics statistics) {
+        if (statistics.recordCount() == 0) {
+            return new AnalysisDtos.AnalysisResponse(days, 0, "当前周期没有记录，暂时无法形成趋势。",
+                    List.of("缺少连续数据"), List.of("请连续记录至少 7 天，再查看个性化建议。"));
+        }
+        double sleep = statistics.averageSleepHours();
+        double diet = statistics.averageDietScore();
+        double hydration = statistics.averageHydrationMl();
+        double exercise = statistics.totalExerciseMinutes() / (double) statistics.recordCount();
+        int moderateEquivalentMinutes = statistics.totalModerateEquivalentExerciseMinutes();
+        int strengthTrainingCount = statistics.strengthTrainingCount();
+        List<String> risks = new ArrayList<>();
+        List<String> suggestions = new ArrayList<>();
+
         if (sleep < 7) {
             risks.add("平均睡眠不足 7 小时");
             suggestions.add("尝试固定就寝时间，并提前 30 分钟减少屏幕使用。");
@@ -42,7 +47,7 @@ public class RuleBasedAdviceGenerator implements AdviceGenerator {
             risks.add("平均有效补水量不足");
             suggestions.add("优先补充白水或无糖饮品，目标每天至少 " + thresholds.minimumHydrationMl() + " ml 有效补水。");
         }
-        for (String drinkRisk : drinkRules.riskMessages(records)) {
+        for (String drinkRisk : drinkRules.riskMessages(statistics.drinkVolumesByType())) {
             risks.add(drinkRisk);
             suggestions.add("减少对应风险饮品，以白水、无糖茶等替代，避免把饮料等同于有效补水。");
         }
@@ -54,13 +59,15 @@ public class RuleBasedAdviceGenerator implements AdviceGenerator {
             risks.add("中等强度运动当量未达到每周 150 分钟");
             suggestions.add("高强度运动按两倍计入；可安排每周至少 150 分钟中等强度当量运动。");
         }
-        if (days >= 7 && strengthTrainingCount < 2L * days / 7d) {
+        if (days >= 7 && strengthTrainingCount < 2d * days / 7d) {
             risks.add("力量训练频次未达到每周 2 次");
             suggestions.add("在安全和自身情况允许的前提下，每周安排至少 2 次力量训练。");
         }
         if (risks.isEmpty()) {
             suggestions.add("本周期指标稳定，请保持当前作息并持续记录。");
         }
-        return new AnalysisDtos.AnalysisResponse(days, records.size(), String.format("已分析 %d 条记录：平均睡眠 %.1f 小时、饮食 %.1f 分、日均运动 %.0f 分钟。", records.size(), sleep, diet, exercise), risks, suggestions);
+        return new AnalysisDtos.AnalysisResponse(days, statistics.recordCount(),
+                String.format("已分析 %d 条记录：平均睡眠 %.1f 小时、饮食 %.1f 分、日均运动 %.0f 分钟。",
+                        statistics.recordCount(), sleep, diet, exercise), risks, suggestions);
     }
 }

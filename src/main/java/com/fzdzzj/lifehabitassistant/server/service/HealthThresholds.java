@@ -27,10 +27,14 @@ public class HealthThresholds {
     }
 
     public boolean isAchieved(HabitRecord record, int hydrationMl) {
-        return record.sleepMinutes() >= minimumSleepMinutes
-                && record.sleepMinutes() <= maximumSleepMinutes
-                && record.getDietScore() >= minimumDietScore
-                && record.moderateEquivalentExerciseMinutes() >= minimumExerciseMinutes
+        return isAchieved(record.sleepMinutes(), record.getDietScore(), record.moderateEquivalentExerciseMinutes(), hydrationMl);
+    }
+
+    public boolean isAchieved(long sleepMinutes, int dietScore, int moderateEquivalentExerciseMinutes, int hydrationMl) {
+        return sleepMinutes >= minimumSleepMinutes
+                && sleepMinutes <= maximumSleepMinutes
+                && dietScore >= minimumDietScore
+                && moderateEquivalentExerciseMinutes >= minimumExerciseMinutes
                 && hydrationMl >= minimumHydrationMl;
     }
 

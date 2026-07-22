@@ -1,68 +1,54 @@
 package com.fzdzzj.lifehabitassistant.server.service;
 
 import com.fzdzzj.lifehabitassistant.pojo.AnalysisDtos;
-import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
+import com.fzdzzj.lifehabitassistant.pojo.HealthStatistics;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 
 @Service
 public class AnalysisService {
     private final HabitService habits;
     private final AdviceGenerator advice;
-    private final HealthThresholds thresholds;
-    private final DrinkHealthRules drinkRules;
+    private final HealthStatisticsService statistics;
 
-    public AnalysisService(HabitService habits, AdviceGenerator advice, HealthThresholds thresholds, DrinkHealthRules drinkRules) {
+    public AnalysisService(HabitService habits, AdviceGenerator advice, HealthStatisticsService statistics) {
         this.habits = habits;
         this.advice = advice;
-        this.thresholds = thresholds;
-        this.drinkRules = drinkRules;
+        this.statistics = statistics;
     }
 
     @Transactional(readOnly = true)
     public AnalysisDtos.TrendResponse trend(int days) {
-        List<HabitRecord> records = records(days);
-        List<AnalysisDtos.DailyTrend> items = records.stream().map(this::daily).toList();
-        return new AnalysisDtos.TrendResponse(days, records.size(), round(records.stream().mapToLong(HabitRecord::sleepMinutes).average().orElse(0) / 60d), round(records.stream().mapToInt(HabitRecord::getDietScore).average().orElse(0)), records.stream().mapToInt(HabitRecord::exerciseMinutes).sum(), round(records.stream().mapToInt(drinkRules::hydrationMl).average().orElse(0)), consecutive(records), items);
+        LocalDate today = LocalDate.now();
+        HealthStatistics summary = statistics.summarize(records(days, today), today);
+        return new AnalysisDtos.TrendResponse(days, summary.recordCount(), summary.averageSleepHours(),
+                summary.averageDietScore(), summary.totalExerciseMinutes(), summary.averageHydrationMl(),
+                summary.consecutiveDays(), summary.dailyStatistics().stream().map(this::daily).toList());
     }
 
     @Transactional(readOnly = true)
     public AnalysisDtos.AnalysisResponse analysis(int days) {
-        return advice.generate(days, records(days));
+        LocalDate today = LocalDate.now();
+        return advice.generate(days, statistics.summarize(records(days, today), today));
     }
 
-    @Transactional(readOnly = true)
-    public List<HabitRecord> between(LocalDate start, LocalDate end) {
-        return habits.range(start, end);
+    private java.util.List<com.fzdzzj.lifehabitassistant.pojo.HabitRecord> records(int days, LocalDate end) {
+        if (days < 1 || days > 366) {
+            throw new IllegalArgumentException("days 必须在 1 到 366 之间");
+        }
+        return habits.range(end.minusDays(days - 1L), end);
     }
 
-    private List<HabitRecord> records(int days) {
-        if (days < 1 || days > 366) throw new IllegalArgumentException("days 必须在 1 到 366 之间");
-        LocalDate end = LocalDate.now();
-        return habits.range(end.minusDays(days - 1), end);
+    private AnalysisDtos.DailyTrend daily(HealthStatistics.DailyStatistics daily) {
+        return new AnalysisDtos.DailyTrend(daily.date(), round(daily.totalSleepMinutes() / 60d), daily.dietScore(),
+                daily.exerciseMinutes(), daily.hydrationMl(), daily.riskDrinkVolumeMl(), daily.achieved(),
+                round(daily.nightSleepMinutes() / 60d), round(daily.napSleepMinutes() / 60d),
+                daily.moderateEquivalentExerciseMinutes(), daily.exerciseMinutesByType());
     }
 
-    private AnalysisDtos.DailyTrend daily(HabitRecord r) {
-        int hydrationMl = drinkRules.hydrationMl(r);
-        return new AnalysisDtos.DailyTrend(r.getRecordDate(), round(r.sleepMinutes() / 60d), r.getDietScore(),
-                r.exerciseMinutes(), hydrationMl, drinkRules.riskDrinkVolumeMl(r), thresholds.isAchieved(r, hydrationMl));
-    }
-
-    private int consecutive(List<HabitRecord> rs) {
-        if (rs.isEmpty()) return 0;
-        Set<LocalDate> dates = new HashSet<>();
-        rs.forEach(r -> dates.add(r.getRecordDate()));
-        int c = 0;
-        for (LocalDate d = LocalDate.now(); dates.contains(d); d = d.minusDays(1)) c++;
-        return c;
-    }
-
-    private double round(double v) {
-        return Math.round(v * 10d) / 10d;
+    private double round(double value) {
+        return Math.round(value * 10d) / 10d;
     }
 }

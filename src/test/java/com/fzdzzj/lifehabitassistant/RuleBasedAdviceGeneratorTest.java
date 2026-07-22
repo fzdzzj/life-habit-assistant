@@ -8,6 +8,7 @@ import com.fzdzzj.lifehabitassistant.pojo.SleepSession;
 import com.fzdzzj.lifehabitassistant.pojo.SleepType;
 import com.fzdzzj.lifehabitassistant.pojo.User;
 import com.fzdzzj.lifehabitassistant.server.service.HealthThresholds;
+import com.fzdzzj.lifehabitassistant.server.service.HealthStatisticsService;
 import com.fzdzzj.lifehabitassistant.server.service.RuleBasedAdviceGenerator;
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +24,9 @@ class RuleBasedAdviceGeneratorTest {
         LocalDate today = LocalDate.now();
         List<HabitRecord> records = IntStream.range(0, 7).mapToObj(offset -> healthyRecord(today.minusDays(offset))).toList();
 
-        var response = new RuleBasedAdviceGenerator(new HealthThresholds(420, 540, 1500, 30, 3), TestDrinkRules.defaults()).generate(7, records);
+        HealthThresholds thresholds = new HealthThresholds(420, 540, 1500, 30, 3);
+        var statistics = new HealthStatisticsService(thresholds, TestDrinkRules.defaults()).summarize(records, today);
+        var response = new RuleBasedAdviceGenerator(thresholds, TestDrinkRules.defaults()).generate(7, statistics);
 
         assertTrue(response.risks().contains("中等强度运动当量未达到每周 150 分钟"));
         assertTrue(response.risks().contains("力量训练频次未达到每周 2 次"));
