@@ -25,9 +25,25 @@ app:
   health:
     minimum-sleep-minutes: 420
     maximum-sleep-minutes: 540
-    minimum-water-ml: 1500
+    minimum-hydration-ml: 1500
     minimum-exercise-minutes: 30
     minimum-diet-score: 3
+  drink:
+    hydration-ratios:
+      WATER: 1.0
+      UNSWEETENED_TEA: 0.9
+      COFFEE: 0.8
+      MILK: 0.8
+      JUICE: 0.5
+      SUGAR_SWEETENED_DRINK: 0.0
+      CARBONATED_SWEET_DRINK: 0.0
+      ENERGY_DRINK: 0.0
+      ALCOHOL: 0.0
+      OTHER: 0.0
+    sugary-risk-volume-ml: 500
+    carbonated-sweet-risk-volume-ml: 330
+    energy-drink-risk-volume-ml: 1
+    alcohol-risk-volume-ml: 1
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

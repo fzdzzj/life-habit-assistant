@@ -24,18 +24,18 @@ public class ReportExporter {
             font.setBold(true);
             header.setFont(font);
             Sheet summary = book.createSheet("Summary");
-            row(summary, 0, header, "Type", "Period", "Records", "Avg sleep (h)", "Avg diet", "Exercise (min)", "Avg water (ml)", "Achievement");
-            row(summary, 1, null, report.type(), report.periodStart() + " to " + report.periodEnd(), report.recordCount(), report.averageSleepHours(), report.averageDietScore(), report.totalExerciseMinutes(), report.averageWaterMl(), report.achievementRate() + "%");
+            row(summary, 0, header, "Type", "Period", "Records", "Avg sleep (h)", "Avg diet", "Exercise (min)", "Avg hydration (ml)", "Risk drinks (ml)", "Achievement");
+            row(summary, 1, null, report.type(), report.periodStart() + " to " + report.periodEnd(), report.recordCount(), report.averageSleepHours(), report.averageDietScore(), report.totalExerciseMinutes(), report.averageHydrationMl(), report.totalRiskDrinkVolumeMl(), report.achievementRate() + "%");
             Sheet trends = book.createSheet("Daily trends");
-            row(trends, 0, header, "Date", "Sleep (h)", "Diet score", "Exercise (min)", "Water (ml)", "Achieved");
+            row(trends, 0, header, "Date", "Sleep (h)", "Diet score", "Exercise (min)", "Hydration (ml)", "Risk drinks (ml)", "Achieved");
             int i = 1;
             for (var d : report.dailyTrends())
-                row(trends, i++, null, d.date(), d.sleepHours(), d.dietScore(), d.exerciseMinutes(), d.waterMl(), d.achieved() ? "Yes" : "No");
+                row(trends, i++, null, d.date(), d.sleepHours(), d.dietScore(), d.exerciseMinutes(), d.hydrationMl(), d.riskDrinkVolumeMl(), d.achieved() ? "Yes" : "No");
             Sheet weekly = book.createSheet("Weekly summaries");
-            row(weekly, 0, header, "Week start", "Avg sleep (h)", "Exercise (min)", "Avg water (ml)");
+            row(weekly, 0, header, "Week start", "Avg sleep (h)", "Exercise (min)", "Avg hydration (ml)", "Risk drinks (ml)");
             i = 1;
             for (var summaryItem : report.weeklySummaries())
-                row(weekly, i++, null, summaryItem.weekStart(), summaryItem.averageSleepHours(), summaryItem.exerciseMinutes(), summaryItem.averageWaterMl());
+                row(weekly, i++, null, summaryItem.weekStart(), summaryItem.averageSleepHours(), summaryItem.exerciseMinutes(), summaryItem.averageHydrationMl(), summaryItem.riskDrinkVolumeMl());
             Sheet advice = book.createSheet("Risks and advice");
             row(advice, 0, header, "Category", "Content");
             i = 1;
@@ -59,32 +59,34 @@ public class ReportExporter {
             com.lowagie.text.Font title = new com.lowagie.text.Font(baseFont, 18, com.lowagie.text.Font.BOLD), normal = new com.lowagie.text.Font(baseFont, 10);
             doc.add(new Paragraph(("Life Habit " + r.type() + " report").toUpperCase(), title));
             doc.add(new Paragraph("Period: " + r.periodStart() + " to " + r.periodEnd(), normal));
-            doc.add(new Paragraph("Records: " + r.recordCount() + " | Avg sleep: " + r.averageSleepHours() + " h | Avg diet: " + r.averageDietScore() + " | Exercise: " + r.totalExerciseMinutes() + " min | Avg water: " + r.averageWaterMl() + " ml | Achievement: " + r.achievementRate() + "%", normal));
+            doc.add(new Paragraph("Records: " + r.recordCount() + " | Avg sleep: " + r.averageSleepHours() + " h | Avg diet: " + r.averageDietScore() + " | Exercise: " + r.totalExerciseMinutes() + " min | Avg hydration: " + r.averageHydrationMl() + " ml | Risk drinks: " + r.totalRiskDrinkVolumeMl() + " ml | Achievement: " + r.achievementRate() + "%", normal));
             doc.add(Chunk.NEWLINE);
             doc.add(new Paragraph("Daily trends", title));
-            PdfPTable table = new PdfPTable(6);
-            for (String h : new String[]{"Date", "Sleep", "Diet", "Exercise", "Water", "Achieved"})
+            PdfPTable table = new PdfPTable(7);
+            for (String h : new String[]{"Date", "Sleep", "Diet", "Exercise", "Hydration", "Risk drinks", "Achieved"})
                 table.addCell(new Phrase(h, normal));
             for (var d : r.dailyTrends()) {
                 table.addCell(d.date().toString());
                 table.addCell(d.sleepHours() + " h");
                 table.addCell(String.valueOf(d.dietScore()));
                 table.addCell(d.exerciseMinutes() + " min");
-                table.addCell(d.waterMl() + " ml");
+                table.addCell(d.hydrationMl() + " ml");
+                table.addCell(d.riskDrinkVolumeMl() + " ml");
                 table.addCell(d.achieved() ? "Yes" : "No");
             }
             doc.add(table);
             if (!r.weeklySummaries().isEmpty()) {
                 doc.add(Chunk.NEWLINE);
                 doc.add(new Paragraph("Weekly summaries", title));
-                PdfPTable weeklyTable = new PdfPTable(4);
-                for (String h : new String[]{"Week start", "Avg sleep", "Exercise", "Avg water"})
+                PdfPTable weeklyTable = new PdfPTable(5);
+                for (String h : new String[]{"Week start", "Avg sleep", "Exercise", "Avg hydration", "Risk drinks"})
                     weeklyTable.addCell(new Phrase(h, normal));
                 for (var summaryItem : r.weeklySummaries()) {
                     weeklyTable.addCell(new Phrase(summaryItem.weekStart().toString(), normal));
                     weeklyTable.addCell(new Phrase(summaryItem.averageSleepHours() + " h", normal));
                     weeklyTable.addCell(new Phrase(summaryItem.exerciseMinutes() + " min", normal));
-                    weeklyTable.addCell(new Phrase(summaryItem.averageWaterMl() + " ml", normal));
+                    weeklyTable.addCell(new Phrase(summaryItem.averageHydrationMl() + " ml", normal));
+                    weeklyTable.addCell(new Phrase(summaryItem.riskDrinkVolumeMl() + " ml", normal));
                 }
                 doc.add(weeklyTable);
             }

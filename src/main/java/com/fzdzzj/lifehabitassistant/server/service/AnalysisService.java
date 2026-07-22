@@ -15,18 +15,20 @@ public class AnalysisService {
     private final HabitService habits;
     private final AdviceGenerator advice;
     private final HealthThresholds thresholds;
+    private final DrinkHealthRules drinkRules;
 
-    public AnalysisService(HabitService habits, AdviceGenerator advice, HealthThresholds thresholds) {
+    public AnalysisService(HabitService habits, AdviceGenerator advice, HealthThresholds thresholds, DrinkHealthRules drinkRules) {
         this.habits = habits;
         this.advice = advice;
         this.thresholds = thresholds;
+        this.drinkRules = drinkRules;
     }
 
     @Transactional(readOnly = true)
     public AnalysisDtos.TrendResponse trend(int days) {
         List<HabitRecord> records = records(days);
         List<AnalysisDtos.DailyTrend> items = records.stream().map(this::daily).toList();
-        return new AnalysisDtos.TrendResponse(days, records.size(), round(records.stream().mapToLong(HabitRecord::sleepMinutes).average().orElse(0) / 60d), round(records.stream().mapToInt(HabitRecord::getDietScore).average().orElse(0)), records.stream().mapToInt(HabitRecord::exerciseMinutes).sum(), round(records.stream().mapToInt(HabitRecord::getWaterMl).average().orElse(0)), consecutive(records), items);
+        return new AnalysisDtos.TrendResponse(days, records.size(), round(records.stream().mapToLong(HabitRecord::sleepMinutes).average().orElse(0) / 60d), round(records.stream().mapToInt(HabitRecord::getDietScore).average().orElse(0)), records.stream().mapToInt(HabitRecord::exerciseMinutes).sum(), round(records.stream().mapToInt(drinkRules::hydrationMl).average().orElse(0)), consecutive(records), items);
     }
 
     @Transactional(readOnly = true)
@@ -46,7 +48,9 @@ public class AnalysisService {
     }
 
     private AnalysisDtos.DailyTrend daily(HabitRecord r) {
-        return new AnalysisDtos.DailyTrend(r.getRecordDate(), round(r.sleepMinutes() / 60d), r.getDietScore(), r.exerciseMinutes(), r.getWaterMl(), thresholds.isAchieved(r));
+        int hydrationMl = drinkRules.hydrationMl(r);
+        return new AnalysisDtos.DailyTrend(r.getRecordDate(), round(r.sleepMinutes() / 60d), r.getDietScore(),
+                r.exerciseMinutes(), hydrationMl, drinkRules.riskDrinkVolumeMl(r), thresholds.isAchieved(r, hydrationMl));
     }
 
     private int consecutive(List<HabitRecord> rs) {

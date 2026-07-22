@@ -23,25 +23,25 @@ public class HabitRecord {
     @OneToMany(mappedBy = "habitRecord", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("startedAt ASC")
     private final List<ExerciseSession> exerciseSessions = new ArrayList<>();
+    @OneToMany(mappedBy = "habitRecord", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("recordedAt ASC")
+    private final List<DrinkRecord> drinkRecords = new ArrayList<>();
     @Column(name = "diet_score", nullable = false)
     private int dietScore;
-    @Column(name = "water_ml", nullable = false)
-    private int waterMl;
     @Column(length = 500)
     private String note;
 
     protected HabitRecord() {
     }
 
-    public HabitRecord(User user, LocalDate date, int dietScore, int waterMl, String note) {
+    public HabitRecord(User user, LocalDate date, int dietScore, String note) {
         this.user = user;
         this.recordDate = date;
-        update(dietScore, waterMl, note);
+        update(dietScore, note);
     }
 
-    public void update(int dietScore, int waterMl, String note) {
+    public void update(int dietScore, String note) {
         this.dietScore = dietScore;
-        this.waterMl = waterMl;
         this.note = note;
     }
 
@@ -55,6 +55,10 @@ public class HabitRecord {
 
     public void addExerciseSession(ExerciseSession session) {
         exerciseSessions.add(session);
+    }
+
+    public void addDrinkRecord(DrinkRecord record) {
+        drinkRecords.add(record);
     }
 
     public int exerciseMinutes() {
@@ -89,12 +93,12 @@ public class HabitRecord {
         return List.copyOf(exerciseSessions);
     }
 
-    public int getDietScore() {
-        return dietScore;
+    public List<DrinkRecord> getDrinkRecords() {
+        return List.copyOf(drinkRecords);
     }
 
-    public int getWaterMl() {
-        return waterMl;
+    public int getDietScore() {
+        return dietScore;
     }
 
     public String getNote() {

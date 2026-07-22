@@ -20,10 +20,12 @@ import java.util.List;
 public class HabitService {
     private final HabitRecordRepository records;
     private final CurrentUser currentUser;
+    private final DrinkHealthRules drinkRules;
 
-    public HabitService(HabitRecordRepository records, CurrentUser currentUser) {
+    public HabitService(HabitRecordRepository records, CurrentUser currentUser, DrinkHealthRules drinkRules) {
         this.records = records;
         this.currentUser = currentUser;
+        this.drinkRules = drinkRules;
     }
 
     @Transactional
@@ -31,9 +33,9 @@ public class HabitService {
         User user = currentUser.require();
         HabitRecord record = records.findByUserAndRecordDate(user, request.recordDate()).orElse(null);
         if (record == null) {
-            record = new HabitRecord(user, request.recordDate(), request.dietScore(), request.waterMl(), request.note());
+            record = new HabitRecord(user, request.recordDate(), request.dietScore(), request.note());
         } else {
-            record.update(request.dietScore(), request.waterMl(), request.note());
+            record.update(request.dietScore(), request.note());
         }
         return toResponse(records.save(record));
     }
@@ -70,16 +72,19 @@ public class HabitService {
 
     public HabitDtos.HabitResponse toResponse(HabitRecord r) {
         long minutes = r.sleepMinutes();
-        return new HabitDtos.HabitResponse(r.getRecordDate(), minutes, Math.round(minutes / 6.0) / 10.0, r.getDietScore(), r.exerciseMinutes(), r.moderateEquivalentExerciseMinutes(), r.getWaterMl(), r.getNote(), dailyEvaluation(r));
+        int hydrationMl = drinkRules.hydrationMl(r);
+        return new HabitDtos.HabitResponse(r.getRecordDate(), minutes, Math.round(minutes / 6.0) / 10.0,
+                r.getDietScore(), r.exerciseMinutes(), r.moderateEquivalentExerciseMinutes(), hydrationMl,
+                drinkRules.riskDrinkVolumeMl(r), r.getNote(), dailyEvaluation(r, hydrationMl));
     }
 
-    private String dailyEvaluation(HabitRecord r) {
+    private String dailyEvaluation(HabitRecord r, int hydrationMl) {
         int pass = 0;
         long sleep = r.sleepMinutes();
         if (sleep >= 420 && sleep <= 540) pass++;
         if (r.getDietScore() >= 3) pass++;
         if (r.moderateEquivalentExerciseMinutes() >= 30) pass++;
-        if (r.getWaterMl() >= 1500) pass++;
+        if (hydrationMl >= 1500) pass++;
         return pass >= 4 ? "状态良好" : pass >= 2 ? "可继续改善" : "需要重点关注";
     }
 }

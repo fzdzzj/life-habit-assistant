@@ -95,7 +95,6 @@ class ReportExportHttpIntegrationTest {
                         .content(json(Map.of(
                                 "recordDate", date.toString(),
                                 "dietScore", 4,
-                                "waterMl", 1800,
                                 "note", "report export test"))))
                 .andExpect(status().isOk());
     }

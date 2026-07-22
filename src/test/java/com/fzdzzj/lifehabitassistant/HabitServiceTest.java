@@ -25,12 +25,12 @@ class HabitServiceTest {
         CurrentUser currentUser = mock(CurrentUser.class);
         User user = new User("demo", "hash");
         HabitDtos.HabitRequest request = new HabitDtos.HabitRequest(
-                LocalDate.of(2026, 7, 21), 4, 1800, "walked");
+                LocalDate.of(2026, 7, 21), 4, "walked");
         when(currentUser.require()).thenReturn(user);
         when(records.findByUserAndRecordDate(user, request.recordDate())).thenReturn(Optional.empty());
         when(records.save(any(HabitRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        HabitDtos.HabitResponse response = new HabitService(records, currentUser).save(request);
+        HabitDtos.HabitResponse response = new HabitService(records, currentUser, TestDrinkRules.defaults()).save(request);
 
         ArgumentCaptor<HabitRecord> captor = ArgumentCaptor.forClass(HabitRecord.class);
         verify(records).save(captor.capture());
@@ -45,14 +45,14 @@ class HabitServiceTest {
         CurrentUser currentUser = mock(CurrentUser.class);
         User user = new User("demo", "hash");
         LocalDate date = LocalDate.of(2026, 7, 21);
-        HabitRecord existing = new HabitRecord(user, date, 3, 1200, null);
+        HabitRecord existing = new HabitRecord(user, date, 3, null);
         existing.addSleepSession(new com.fzdzzj.lifehabitassistant.pojo.SleepSession(existing, com.fzdzzj.lifehabitassistant.pojo.SleepType.NIGHT, date.minusDays(1).atTime(22, 0), date.atTime(6, 0)));
-        HabitDtos.HabitRequest request = new HabitDtos.HabitRequest(date, 5, 2000, "updated");
+        HabitDtos.HabitRequest request = new HabitDtos.HabitRequest(date, 5, "updated");
         when(currentUser.require()).thenReturn(user);
         when(records.findByUserAndRecordDate(user, date)).thenReturn(Optional.of(existing));
         when(records.save(existing)).thenReturn(existing);
 
-        HabitDtos.HabitResponse response = new HabitService(records, currentUser).save(request);
+        HabitDtos.HabitResponse response = new HabitService(records, currentUser, TestDrinkRules.defaults()).save(request);
 
         verify(records).save(existing);
         assertEquals(480, response.sleepMinutes());
