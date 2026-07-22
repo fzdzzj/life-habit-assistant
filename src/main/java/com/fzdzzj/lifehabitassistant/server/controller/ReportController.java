@@ -4,6 +4,8 @@ import com.fzdzzj.lifehabitassistant.common.Result;
 import com.fzdzzj.lifehabitassistant.pojo.ReportDtos;
 import com.fzdzzj.lifehabitassistant.server.service.ReportExporter;
 import com.fzdzzj.lifehabitassistant.server.service.ReportService;
+import jakarta.validation.constraints.PastOrPresent;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -30,7 +32,7 @@ public class ReportController {
     }
 
     @GetMapping("/weekly")
-    public Result<ReportDtos.ReportResponse> weekly(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate week) {
+    public Result<ReportDtos.ReportResponse> weekly(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) @PastOrPresent(message = "week 不得晚于今天") LocalDate week) {
         return Result.success(reports.weekly(week == null ? LocalDate.now() : week));
     }
 
@@ -40,12 +42,12 @@ public class ReportController {
     }
 
     @GetMapping("/weekly/export")
-    public ResponseEntity<byte[]> exportWeekly(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate week, @RequestParam String format) {
+    public ResponseEntity<byte[]> exportWeekly(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) @PastOrPresent(message = "week 不得晚于今天") LocalDate week, @RequestParam @Pattern(regexp = "(?i)xlsx|pdf", message = "format 仅支持 xlsx 或 pdf") String format) {
         return export(reports.weekly(week == null ? LocalDate.now() : week), format, "weekly");
     }
 
     @GetMapping("/monthly/export")
-    public ResponseEntity<byte[]> exportMonthly(@RequestParam(required = false) String month, @RequestParam String format) {
+    public ResponseEntity<byte[]> exportMonthly(@RequestParam(required = false) String month, @RequestParam @Pattern(regexp = "(?i)xlsx|pdf", message = "format 仅支持 xlsx 或 pdf") String format) {
         return export(reports.monthly(month == null ? YearMonth.now() : parseMonth(month)), format, "monthly");
     }
 
@@ -59,8 +61,12 @@ public class ReportController {
 
     private YearMonth parseMonth(String month) {
         try {
-            return YearMonth.parse(month);
-        } catch (RuntimeException ex) {
+            YearMonth parsed = YearMonth.parse(month);
+            if (parsed.isAfter(YearMonth.now())) {
+                throw new IllegalArgumentException("month 不得晚于当前月份");
+            }
+            return parsed;
+        } catch (java.time.DateTimeException ex) {
             throw new IllegalArgumentException("month 必须为 yyyy-MM 格式");
         }
     }
