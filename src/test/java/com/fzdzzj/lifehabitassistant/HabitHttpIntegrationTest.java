@@ -49,7 +49,7 @@ class HabitHttpIntegrationTest {
         String secondToken = register("second-" + UUID.randomUUID());
         LocalDate date = LocalDate.now().minusDays(1);
 
-        saveHabit(firstToken, date, 30, 1800);
+        saveHabit(firstToken, date, 1800);
 
         mockMvc.perform(get("/api/habits").header("Authorization", "Bearer " + firstToken))
                 .andExpect(status().isOk())
@@ -69,13 +69,12 @@ class HabitHttpIntegrationTest {
         String token = register("update-" + UUID.randomUUID());
         LocalDate date = LocalDate.now().minusDays(1);
 
-        saveHabit(token, date, 20, 1000);
-        saveHabit(token, date, 60, 2200);
+        saveHabit(token, date, 1000);
+        saveHabit(token, date, 2200);
 
         mockMvc.perform(get("/api/habits").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content.length()").value(1))
-                .andExpect(jsonPath("$.data.content[0].exerciseMinutes").value(60))
                 .andExpect(jsonPath("$.data.content[0].waterMl").value(2200));
     }
 
@@ -86,19 +85,19 @@ class HabitHttpIntegrationTest {
         mockMvc.perform(post("/api/habits")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(habitRequest(LocalDate.now().plusDays(1), 30, 1800))))
+                        .content(json(habitRequest(LocalDate.now().plusDays(1), 1800))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(40000));
         mockMvc.perform(post("/api/habits")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(habitRequest(LocalDate.now(), 601, 1800))))
+                        .content(json(Map.of("recordDate", LocalDate.now().toString(), "dietScore", 6, "waterMl", 1800))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(40000));
         mockMvc.perform(post("/api/habits")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(habitRequest(LocalDate.now(), 30, 10001))))
+                        .content(json(habitRequest(LocalDate.now(), 10001))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(40000));
         mockMvc.perform(get("/api/habits")
@@ -118,7 +117,7 @@ class HabitHttpIntegrationTest {
     void sleepSessionsShouldSeparateNightSleepAndNap() throws Exception {
         String token = register("sleep-" + UUID.randomUUID());
         LocalDate date = LocalDate.now().minusDays(1);
-        saveHabit(token, date, 30, 1800);
+        saveHabit(token, date, 1800);
 
         mockMvc.perform(post("/api/habits/{date}/sleep-sessions", date)
                         .header("Authorization", "Bearer " + token)
@@ -140,6 +139,30 @@ class HabitHttpIntegrationTest {
                 .andExpect(jsonPath("$.data.sleepMinutes").value(510));
     }
 
+    @Test
+    void exerciseSessionsShouldAggregateDetailsAndValidateOtherType() throws Exception {
+        String token = register("exercise-" + UUID.randomUUID());
+        LocalDate date = LocalDate.now().minusDays(1);
+        saveHabit(token, date, 1800);
+
+        mockMvc.perform(post("/api/habits/{date}/exercise-sessions", date)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("exerciseType", "RUN", "intensity", "HIGH", "durationMinutes", 30, "startedAt", date.atTime(18, 0).toString(), "distanceKm", 5.0))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.moderateEquivalentMinutes").value(60));
+        mockMvc.perform(post("/api/habits/{date}/exercise-sessions", date)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("exerciseType", "OTHER", "intensity", "LOW", "durationMinutes", 20, "startedAt", date.atTime(20, 0).toString()))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(40000));
+        mockMvc.perform(get("/api/habits/{date}", date).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.exerciseMinutes").value(30))
+                .andExpect(jsonPath("$.data.moderateEquivalentExerciseMinutes").value(60));
+    }
+
     private String register(String username) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -151,19 +174,18 @@ class HabitHttpIntegrationTest {
         return response.path("data").path("token").asText();
     }
 
-    private void saveHabit(String token, LocalDate date, int exerciseMinutes, int waterMl) throws Exception {
+    private void saveHabit(String token, LocalDate date, int waterMl) throws Exception {
         mockMvc.perform(post("/api/habits")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(habitRequest(date, exerciseMinutes, waterMl))))
+                        .content(json(habitRequest(date, waterMl))))
                 .andExpect(status().isOk());
     }
 
-    private Map<String, Object> habitRequest(LocalDate date, int exerciseMinutes, int waterMl) {
+    private Map<String, Object> habitRequest(LocalDate date, int waterMl) {
         return Map.of(
                 "recordDate", date.toString(),
                 "dietScore", 4,
-                "exerciseMinutes", exerciseMinutes,
                 "waterMl", waterMl,
                 "note", "integration test");
     }

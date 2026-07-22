@@ -26,10 +26,12 @@ class AnalysisServiceTest {
         HealthThresholds thresholds = new HealthThresholds(420, 540, 1500, 30, 3);
         LocalDate today = LocalDate.now();
         User user = new User("demo", "hash");
-        HabitRecord yesterday = new HabitRecord(user, today.minusDays(1), 4, 30, 1500, null);
+        HabitRecord yesterday = new HabitRecord(user, today.minusDays(1), 4, 1500, null);
         yesterday.addSleepSession(new com.fzdzzj.lifehabitassistant.pojo.SleepSession(yesterday, com.fzdzzj.lifehabitassistant.pojo.SleepType.NIGHT, today.minusDays(2).atTime(23, 0), today.minusDays(1).atTime(7, 0)));
-        HabitRecord current = new HabitRecord(user, today, 5, 60, 2000, null);
+        yesterday.addExerciseSession(new com.fzdzzj.lifehabitassistant.pojo.ExerciseSession(yesterday, com.fzdzzj.lifehabitassistant.pojo.ExerciseType.WALK, null, com.fzdzzj.lifehabitassistant.pojo.ExerciseIntensity.MEDIUM, 30, today.minusDays(1).atTime(18, 0), null, null, null));
+        HabitRecord current = new HabitRecord(user, today, 5, 2000, null);
         current.addSleepSession(new com.fzdzzj.lifehabitassistant.pojo.SleepSession(current, com.fzdzzj.lifehabitassistant.pojo.SleepType.NIGHT, today.minusDays(1).atTime(23, 30), today.atTime(7, 0)));
+        current.addExerciseSession(new com.fzdzzj.lifehabitassistant.pojo.ExerciseSession(current, com.fzdzzj.lifehabitassistant.pojo.ExerciseType.RUN, null, com.fzdzzj.lifehabitassistant.pojo.ExerciseIntensity.HIGH, 60, today.atTime(18, 0), null, null, null));
         List<HabitRecord> records = List.of(yesterday, current);
         when(habits.range(any(), any())).thenReturn(records);
 
