@@ -25,7 +25,7 @@ class HabitServiceTest {
         CurrentUser currentUser = mock(CurrentUser.class);
         User user = new User("demo", "hash");
         HabitDtos.HabitRequest request = new HabitDtos.HabitRequest(
-                LocalDate.of(2026, 7, 21), 4, 45, 1800, "walked");
+                LocalDate.of(2026, 7, 21), 4, 1800, "walked");
         when(currentUser.require()).thenReturn(user);
         when(records.findByUserAndRecordDate(user, request.recordDate())).thenReturn(Optional.empty());
         when(records.save(any(HabitRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -45,9 +45,9 @@ class HabitServiceTest {
         CurrentUser currentUser = mock(CurrentUser.class);
         User user = new User("demo", "hash");
         LocalDate date = LocalDate.of(2026, 7, 21);
-        HabitRecord existing = new HabitRecord(user, date, 3, 20, 1200, null);
+        HabitRecord existing = new HabitRecord(user, date, 3, 1200, null);
         existing.addSleepSession(new com.fzdzzj.lifehabitassistant.pojo.SleepSession(existing, com.fzdzzj.lifehabitassistant.pojo.SleepType.NIGHT, date.minusDays(1).atTime(22, 0), date.atTime(6, 0)));
-        HabitDtos.HabitRequest request = new HabitDtos.HabitRequest(date, 5, 60, 2000, "updated");
+        HabitDtos.HabitRequest request = new HabitDtos.HabitRequest(date, 5, 2000, "updated");
         when(currentUser.require()).thenReturn(user);
         when(records.findByUserAndRecordDate(user, date)).thenReturn(Optional.of(existing));
         when(records.save(existing)).thenReturn(existing);

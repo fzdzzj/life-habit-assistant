@@ -20,10 +20,11 @@ public class HabitRecord {
     @OneToMany(mappedBy = "habitRecord", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sleepStartAt ASC")
     private final List<SleepSession> sleepSessions = new ArrayList<>();
+    @OneToMany(mappedBy = "habitRecord", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("startedAt ASC")
+    private final List<ExerciseSession> exerciseSessions = new ArrayList<>();
     @Column(name = "diet_score", nullable = false)
     private int dietScore;
-    @Column(name = "exercise_minutes", nullable = false)
-    private int exerciseMinutes;
     @Column(name = "water_ml", nullable = false)
     private int waterMl;
     @Column(length = 500)
@@ -32,15 +33,14 @@ public class HabitRecord {
     protected HabitRecord() {
     }
 
-    public HabitRecord(User user, LocalDate date, int dietScore, int exerciseMinutes, int waterMl, String note) {
+    public HabitRecord(User user, LocalDate date, int dietScore, int waterMl, String note) {
         this.user = user;
         this.recordDate = date;
-        update(dietScore, exerciseMinutes, waterMl, note);
+        update(dietScore, waterMl, note);
     }
 
-    public void update(int dietScore, int exerciseMinutes, int waterMl, String note) {
+    public void update(int dietScore, int waterMl, String note) {
         this.dietScore = dietScore;
-        this.exerciseMinutes = exerciseMinutes;
         this.waterMl = waterMl;
         this.note = note;
     }
@@ -51,6 +51,22 @@ public class HabitRecord {
 
     public void addSleepSession(SleepSession session) {
         sleepSessions.add(session);
+    }
+
+    public void addExerciseSession(ExerciseSession session) {
+        exerciseSessions.add(session);
+    }
+
+    public int exerciseMinutes() {
+        return exerciseSessions.stream().mapToInt(ExerciseSession::getDurationMinutes).sum();
+    }
+
+    public int moderateEquivalentExerciseMinutes() {
+        return exerciseSessions.stream().mapToInt(ExerciseSession::moderateEquivalentMinutes).sum();
+    }
+
+    public long strengthExerciseCount() {
+        return exerciseSessions.stream().filter(ExerciseSession::isStrengthTraining).count();
     }
 
     public Long getId() {
@@ -69,12 +85,12 @@ public class HabitRecord {
         return List.copyOf(sleepSessions);
     }
 
-    public int getDietScore() {
-        return dietScore;
+    public List<ExerciseSession> getExerciseSessions() {
+        return List.copyOf(exerciseSessions);
     }
 
-    public int getExerciseMinutes() {
-        return exerciseMinutes;
+    public int getDietScore() {
+        return dietScore;
     }
 
     public int getWaterMl() {

@@ -31,9 +31,9 @@ public class HabitService {
         User user = currentUser.require();
         HabitRecord record = records.findByUserAndRecordDate(user, request.recordDate()).orElse(null);
         if (record == null) {
-            record = new HabitRecord(user, request.recordDate(), request.dietScore(), request.exerciseMinutes(), request.waterMl(), request.note());
+            record = new HabitRecord(user, request.recordDate(), request.dietScore(), request.waterMl(), request.note());
         } else {
-            record.update(request.dietScore(), request.exerciseMinutes(), request.waterMl(), request.note());
+            record.update(request.dietScore(), request.waterMl(), request.note());
         }
         return toResponse(records.save(record));
     }
@@ -70,7 +70,7 @@ public class HabitService {
 
     public HabitDtos.HabitResponse toResponse(HabitRecord r) {
         long minutes = r.sleepMinutes();
-        return new HabitDtos.HabitResponse(r.getRecordDate(), minutes, Math.round(minutes / 6.0) / 10.0, r.getDietScore(), r.getExerciseMinutes(), r.getWaterMl(), r.getNote(), dailyEvaluation(r));
+        return new HabitDtos.HabitResponse(r.getRecordDate(), minutes, Math.round(minutes / 6.0) / 10.0, r.getDietScore(), r.exerciseMinutes(), r.moderateEquivalentExerciseMinutes(), r.getWaterMl(), r.getNote(), dailyEvaluation(r));
     }
 
     private String dailyEvaluation(HabitRecord r) {
@@ -78,7 +78,7 @@ public class HabitService {
         long sleep = r.sleepMinutes();
         if (sleep >= 420 && sleep <= 540) pass++;
         if (r.getDietScore() >= 3) pass++;
-        if (r.getExerciseMinutes() >= 30) pass++;
+        if (r.moderateEquivalentExerciseMinutes() >= 30) pass++;
         if (r.getWaterMl() >= 1500) pass++;
         return pass >= 4 ? "状态良好" : pass >= 2 ? "可继续改善" : "需要重点关注";
     }

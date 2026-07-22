@@ -94,10 +94,7 @@ class ReportExportHttpIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of(
                                 "recordDate", date.toString(),
-                                "bedtime", "23:30",
-                                "wakeTime", "07:00",
                                 "dietScore", 4,
-                                "exerciseMinutes", 45,
                                 "waterMl", 1800,
                                 "note", "report export test"))))
                 .andExpect(status().isOk());

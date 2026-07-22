@@ -30,7 +30,7 @@ public class HealthThresholds {
         return record.sleepMinutes() >= minimumSleepMinutes
                 && record.sleepMinutes() <= maximumSleepMinutes
                 && record.getDietScore() >= minimumDietScore
-                && record.getExerciseMinutes() >= minimumExerciseMinutes
+                && record.moderateEquivalentExerciseMinutes() >= minimumExerciseMinutes
                 && record.getWaterMl() >= minimumWaterMl;
     }
 

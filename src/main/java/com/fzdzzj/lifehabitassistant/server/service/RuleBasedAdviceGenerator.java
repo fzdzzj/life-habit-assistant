@@ -21,7 +21,9 @@ public class RuleBasedAdviceGenerator implements AdviceGenerator {
         double sleep = records.stream().mapToLong(HabitRecord::sleepMinutes).average().orElse(0) / 60d;
         double diet = records.stream().mapToInt(HabitRecord::getDietScore).average().orElse(0);
         double water = records.stream().mapToInt(HabitRecord::getWaterMl).average().orElse(0);
-        double exercise = records.stream().mapToInt(HabitRecord::getExerciseMinutes).average().orElse(0);
+        double exercise = records.stream().mapToInt(HabitRecord::exerciseMinutes).average().orElse(0);
+        int moderateEquivalentMinutes = records.stream().mapToInt(HabitRecord::moderateEquivalentExerciseMinutes).sum();
+        long strengthTrainingCount = records.stream().mapToLong(HabitRecord::strengthExerciseCount).sum();
         List<String> risks = new ArrayList<>(), suggestions = new ArrayList<>();
         if (sleep < 7) {
             risks.add("平均睡眠不足 7 小时");
@@ -41,6 +43,14 @@ public class RuleBasedAdviceGenerator implements AdviceGenerator {
         if (exercise < thresholds.minimumExerciseMinutes()) {
             risks.add("日均运动不足");
             suggestions.add("从每天 " + thresholds.minimumExerciseMinutes() + " 分钟步行或轻运动开始。");
+        }
+        if (days >= 7 && moderateEquivalentMinutes < 150 * days / 7d) {
+            risks.add("中等强度运动当量未达到每周 150 分钟");
+            suggestions.add("高强度运动按两倍计入；可安排每周至少 150 分钟中等强度当量运动。");
+        }
+        if (days >= 7 && strengthTrainingCount < 2L * days / 7d) {
+            risks.add("力量训练频次未达到每周 2 次");
+            suggestions.add("在安全和自身情况允许的前提下，每周安排至少 2 次力量训练。");
         }
         if (risks.isEmpty()) {
             suggestions.add("本周期指标稳定，请保持当前作息并持续记录。");
