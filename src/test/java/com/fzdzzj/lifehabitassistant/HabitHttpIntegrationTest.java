@@ -49,7 +49,7 @@ class HabitHttpIntegrationTest {
         String secondToken = register("second-" + UUID.randomUUID());
         LocalDate date = LocalDate.now().minusDays(1);
 
-        saveHabit(firstToken, date, 1800);
+        saveHabit(firstToken, date);
 
         mockMvc.perform(get("/api/habits").header("Authorization", "Bearer " + firstToken))
                 .andExpect(status().isOk())
@@ -69,13 +69,13 @@ class HabitHttpIntegrationTest {
         String token = register("update-" + UUID.randomUUID());
         LocalDate date = LocalDate.now().minusDays(1);
 
-        saveHabit(token, date, 1000);
-        saveHabit(token, date, 2200);
+        saveHabit(token, date);
+        saveHabit(token, date);
 
         mockMvc.perform(get("/api/habits").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content.length()").value(1))
-                .andExpect(jsonPath("$.data.content[0].waterMl").value(2200));
+                .andExpect(jsonPath("$.data.content[0].dietScore").value(4));
     }
 
     @Test
@@ -85,19 +85,13 @@ class HabitHttpIntegrationTest {
         mockMvc.perform(post("/api/habits")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(habitRequest(LocalDate.now().plusDays(1), 1800))))
+                        .content(json(habitRequest(LocalDate.now().plusDays(1)))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(40000));
         mockMvc.perform(post("/api/habits")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("recordDate", LocalDate.now().toString(), "dietScore", 6, "waterMl", 1800))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(40000));
-        mockMvc.perform(post("/api/habits")
-                        .header("Authorization", "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(habitRequest(LocalDate.now(), 10001))))
+                        .content(json(Map.of("recordDate", LocalDate.now().toString(), "dietScore", 6))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(40000));
         mockMvc.perform(get("/api/habits")
@@ -117,7 +111,7 @@ class HabitHttpIntegrationTest {
     void sleepSessionsShouldSeparateNightSleepAndNap() throws Exception {
         String token = register("sleep-" + UUID.randomUUID());
         LocalDate date = LocalDate.now().minusDays(1);
-        saveHabit(token, date, 1800);
+        saveHabit(token, date);
 
         mockMvc.perform(post("/api/habits/{date}/sleep-sessions", date)
                         .header("Authorization", "Bearer " + token)
@@ -143,7 +137,7 @@ class HabitHttpIntegrationTest {
     void exerciseSessionsShouldAggregateDetailsAndValidateOtherType() throws Exception {
         String token = register("exercise-" + UUID.randomUUID());
         LocalDate date = LocalDate.now().minusDays(1);
-        saveHabit(token, date, 1800);
+        saveHabit(token, date);
 
         mockMvc.perform(post("/api/habits/{date}/exercise-sessions", date)
                         .header("Authorization", "Bearer " + token)
@@ -163,6 +157,30 @@ class HabitHttpIntegrationTest {
                 .andExpect(jsonPath("$.data.moderateEquivalentExerciseMinutes").value(60));
     }
 
+    @Test
+    void drinkRecordsShouldCalculateHydrationAndFlagRiskDrinks() throws Exception {
+        String token = register("drink-" + UUID.randomUUID());
+        LocalDate date = LocalDate.now().minusDays(1);
+        saveHabit(token, date);
+
+        createDrink(token, date, Map.of("drinkType", "WATER", "volumeMl", 500, "recordedAt", date.atTime(9, 0).toString()))
+                .andExpect(jsonPath("$.data.hydrationMl").value(500))
+                .andExpect(jsonPath("$.data.riskDrink").value(false));
+        createDrink(token, date, Map.of("drinkType", "COFFEE", "volumeMl", 200, "recordedAt", date.atTime(10, 0).toString()))
+                .andExpect(jsonPath("$.data.hydrationMl").value(160));
+        createDrink(token, date, Map.of("drinkType", "CARBONATED_SWEET_DRINK", "volumeMl", 330, "recordedAt", date.atTime(12, 0).toString()))
+                .andExpect(jsonPath("$.data.hydrationMl").value(0))
+                .andExpect(jsonPath("$.data.riskDrink").value(true));
+        createDrink(token, date, Map.of("drinkType", "OTHER", "volumeMl", 100, "recordedAt", date.atTime(13, 0).toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(40000));
+
+        mockMvc.perform(get("/api/habits/{date}", date).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.hydrationMl").value(660))
+                .andExpect(jsonPath("$.data.riskDrinkVolumeMl").value(330));
+    }
+
     private String register(String username) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -174,19 +192,25 @@ class HabitHttpIntegrationTest {
         return response.path("data").path("token").asText();
     }
 
-    private void saveHabit(String token, LocalDate date, int waterMl) throws Exception {
+    private org.springframework.test.web.servlet.ResultActions createDrink(String token, LocalDate date, Map<String, Object> request) throws Exception {
+        return mockMvc.perform(post("/api/habits/{date}/drink-records", date)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(request)));
+    }
+
+    private void saveHabit(String token, LocalDate date) throws Exception {
         mockMvc.perform(post("/api/habits")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(habitRequest(date, waterMl))))
+                        .content(json(habitRequest(date))))
                 .andExpect(status().isOk());
     }
 
-    private Map<String, Object> habitRequest(LocalDate date, int waterMl) {
+    private Map<String, Object> habitRequest(LocalDate date) {
         return Map.of(
                 "recordDate", date.toString(),
                 "dietScore", 4,
-                "waterMl", waterMl,
                 "note", "integration test");
     }
 

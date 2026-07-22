@@ -10,9 +10,11 @@ import java.util.List;
 @Component
 public class RuleBasedAdviceGenerator implements AdviceGenerator {
     private final HealthThresholds thresholds;
+    private final DrinkHealthRules drinkRules;
 
-    public RuleBasedAdviceGenerator(HealthThresholds thresholds) {
+    public RuleBasedAdviceGenerator(HealthThresholds thresholds, DrinkHealthRules drinkRules) {
         this.thresholds = thresholds;
+        this.drinkRules = drinkRules;
     }
 
     public AnalysisDtos.AnalysisResponse generate(int days, List<HabitRecord> records) {
@@ -20,7 +22,7 @@ public class RuleBasedAdviceGenerator implements AdviceGenerator {
             return new AnalysisDtos.AnalysisResponse(days, 0, "当前周期没有记录，暂时无法形成趋势。", List.of("缺少连续数据"), List.of("请连续记录至少 7 天，再查看个性化建议。"));
         double sleep = records.stream().mapToLong(HabitRecord::sleepMinutes).average().orElse(0) / 60d;
         double diet = records.stream().mapToInt(HabitRecord::getDietScore).average().orElse(0);
-        double water = records.stream().mapToInt(HabitRecord::getWaterMl).average().orElse(0);
+        double hydration = records.stream().mapToInt(drinkRules::hydrationMl).average().orElse(0);
         double exercise = records.stream().mapToInt(HabitRecord::exerciseMinutes).average().orElse(0);
         int moderateEquivalentMinutes = records.stream().mapToInt(HabitRecord::moderateEquivalentExerciseMinutes).sum();
         long strengthTrainingCount = records.stream().mapToLong(HabitRecord::strengthExerciseCount).sum();
@@ -36,9 +38,13 @@ public class RuleBasedAdviceGenerator implements AdviceGenerator {
             risks.add("饮食评分偏低");
             suggestions.add("优先保证规律三餐和蔬菜、蛋白质摄入。");
         }
-        if (water < thresholds.minimumWaterMl()) {
-            risks.add("平均饮水量不足");
-            suggestions.add("将饮水分散到全天，目标每天至少 " + thresholds.minimumWaterMl() + " ml。");
+        if (hydration < thresholds.minimumHydrationMl()) {
+            risks.add("平均有效补水量不足");
+            suggestions.add("优先补充白水或无糖饮品，目标每天至少 " + thresholds.minimumHydrationMl() + " ml 有效补水。");
+        }
+        for (String drinkRisk : drinkRules.riskMessages(records)) {
+            risks.add(drinkRisk);
+            suggestions.add("减少对应风险饮品，以白水、无糖茶等替代，避免把饮料等同于有效补水。");
         }
         if (exercise < thresholds.minimumExerciseMinutes()) {
             risks.add("日均运动不足");

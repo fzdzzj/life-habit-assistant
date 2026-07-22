@@ -9,29 +9,29 @@ import org.springframework.stereotype.Component;
 public class HealthThresholds {
     private final int minimumSleepMinutes;
     private final int maximumSleepMinutes;
-    private final int minimumWaterMl;
+    private final int minimumHydrationMl;
     private final int minimumExerciseMinutes;
     private final int minimumDietScore;
 
     public HealthThresholds(
             @Value("${app.health.minimum-sleep-minutes}") int minimumSleepMinutes,
             @Value("${app.health.maximum-sleep-minutes}") int maximumSleepMinutes,
-            @Value("${app.health.minimum-water-ml}") int minimumWaterMl,
+            @Value("${app.health.minimum-hydration-ml}") int minimumHydrationMl,
             @Value("${app.health.minimum-exercise-minutes}") int minimumExerciseMinutes,
             @Value("${app.health.minimum-diet-score}") int minimumDietScore) {
         this.minimumSleepMinutes = minimumSleepMinutes;
         this.maximumSleepMinutes = maximumSleepMinutes;
-        this.minimumWaterMl = minimumWaterMl;
+        this.minimumHydrationMl = minimumHydrationMl;
         this.minimumExerciseMinutes = minimumExerciseMinutes;
         this.minimumDietScore = minimumDietScore;
     }
 
-    public boolean isAchieved(HabitRecord record) {
+    public boolean isAchieved(HabitRecord record, int hydrationMl) {
         return record.sleepMinutes() >= minimumSleepMinutes
                 && record.sleepMinutes() <= maximumSleepMinutes
                 && record.getDietScore() >= minimumDietScore
                 && record.moderateEquivalentExerciseMinutes() >= minimumExerciseMinutes
-                && record.getWaterMl() >= minimumWaterMl;
+                && hydrationMl >= minimumHydrationMl;
     }
 
     public int minimumSleepMinutes() {
@@ -42,8 +42,8 @@ public class HealthThresholds {
         return maximumSleepMinutes;
     }
 
-    public int minimumWaterMl() {
-        return minimumWaterMl;
+    public int minimumHydrationMl() {
+        return minimumHydrationMl;
     }
 
     public int minimumExerciseMinutes() {

@@ -55,10 +55,12 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 | --- | --- | --- |
 | 认证 | `POST /api/auth/register` | 注册，返回 JWT |
 | 认证 | `POST /api/auth/login` | 登录，返回 JWT |
-| 每日记录 | `POST /api/habits` | 新建或更新当日记录 |
+| 每日记录 | `POST /api/habits` | 新建或更新当日记录（饮品改由明细接口维护） |
 | 每日记录 | `GET /api/habits` | 分页和日期范围查询 |
 | 每日记录 | `GET /api/habits/{date}` | 查询单日记录 |
 | 每日记录 | `DELETE /api/habits/{date}` | 删除单日记录 |
+| 饮品明细 | `GET/POST /api/habits/{date}/drink-records` | 查询或新增当天饮品明细 |
+| 饮品明细 | `PUT/DELETE /api/habits/{date}/drink-records/{id}` | 修改或删除一条饮品明细 |
 | 趋势 | `GET /api/trends?days=7` | 睡眠、饮食、运动、饮水与连续天数 |
 | 建议 | `POST /api/analyses?days=7` | 规则型风险和建议 |
 | 报告 | `GET /api/reports/weekly?week=YYYY-MM-DD` | 自然周报告 |
@@ -72,13 +74,11 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 {
   "recordDate": "2026-07-21",
   "dietScore": 4,
-  "exerciseMinutes": 45,
-  "waterMl": 1800,
   "note": "晚饭后散步"
 }
 ```
 
-`recordDate` 是当天归属日。先创建每日记录，再通过独立接口维护睡眠片段：`GET/POST /api/habits/{date}/sleep-sessions`、`PUT/DELETE /api/habits/{date}/sleep-sessions/{id}`。每段以 `sleepType: NIGHT | NAP` 与完整的 `sleepStartAt`、`wakeAt` 表示；未睡时不创建片段。日记录、趋势和报告自动汇总所有片段的睡眠分钟数。
+`recordDate` 是当天归属日。先创建每日记录，再通过独立接口维护睡眠片段、运动明细和饮品明细。饮品使用 `GET/POST /api/habits/{date}/drink-records`、`PUT/DELETE /api/habits/{date}/drink-records/{id}`；`hydrationMl` 是按饮品类型计算的有效补水，不再把所有饮料简单等同于饮水。详见 [饮品模块设计](docs/drink-records.md)。
 
 ## 演示顺序
 

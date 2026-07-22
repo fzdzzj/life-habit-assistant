@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ReportExporterTest {
     @Test
     void exportsReadableExcelAndPdf() throws Exception {
-        var r = new ReportDtos.ReportResponse("weekly", LocalDate.now(), LocalDate.now(), 1, 7.5, 4, 30, 1600, 100, List.of(new AnalysisDtos.DailyTrend(LocalDate.now(), 7.5, 4, 30, 1600, true)), List.of(), List.of(), List.of("保持习惯"));
+        var r = new ReportDtos.ReportResponse("weekly", LocalDate.now(), LocalDate.now(), 1, 7.5, 4, 30, 1600, 0, 100, List.of(new AnalysisDtos.DailyTrend(LocalDate.now(), 7.5, 4, 30, 1600, 0, true)), List.of(), List.of(), List.of("保持习惯"));
         var e = new ReportExporter();
         byte[] xlsx = e.xlsx(r);
         byte[] pdf = e.pdf(r);

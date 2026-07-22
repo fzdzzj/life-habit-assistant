@@ -27,7 +27,7 @@ class ReportServiceTest {
         when(analysis.between(any(), any())).thenReturn(List.of());
         when(advice.generate(anyInt(), any())).thenReturn(new AnalysisDtos.AnalysisResponse(7, 0, "empty", List.of(), List.of()));
 
-        var report = new ReportService(analysis, advice, new HealthThresholds(420, 540, 1500, 30, 3))
+        var report = new ReportService(analysis, advice, new HealthThresholds(420, 540, 1500, 30, 3), TestDrinkRules.defaults())
                 .weekly(LocalDate.of(2026, 7, 19));
 
         assertEquals(LocalDate.of(2026, 7, 13), report.periodStart());
@@ -42,7 +42,7 @@ class ReportServiceTest {
         when(analysis.between(any(), any())).thenReturn(List.of());
         when(advice.generate(anyInt(), any())).thenReturn(new AnalysisDtos.AnalysisResponse(29, 0, "empty", List.of(), List.of()));
 
-        var report = new ReportService(analysis, advice, new HealthThresholds(420, 540, 1500, 30, 3))
+        var report = new ReportService(analysis, advice, new HealthThresholds(420, 540, 1500, 30, 3), TestDrinkRules.defaults())
                 .monthly(YearMonth.of(2024, 2));
 
         assertEquals(LocalDate.of(2024, 2, 29), report.periodEnd());
