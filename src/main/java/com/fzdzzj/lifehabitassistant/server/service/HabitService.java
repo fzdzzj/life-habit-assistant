@@ -3,6 +3,7 @@ package com.fzdzzj.lifehabitassistant.server.service;
 import com.fzdzzj.lifehabitassistant.common.ApiException;
 import com.fzdzzj.lifehabitassistant.pojo.HabitDtos;
 import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
+import com.fzdzzj.lifehabitassistant.pojo.PageResponse;
 import com.fzdzzj.lifehabitassistant.pojo.User;
 import com.fzdzzj.lifehabitassistant.server.dao.HabitRecordRepository;
 import org.springframework.data.domain.Page;
@@ -37,12 +38,13 @@ public class HabitService {
     }
 
     @Transactional(readOnly = true)
-    public Page<HabitDtos.HabitResponse> list(LocalDate start, LocalDate end, int page, int size) {
+    public PageResponse<HabitDtos.HabitResponse> list(LocalDate start, LocalDate end, int page, int size) {
         User user = currentUser.require();
         LocalDate safeEnd = end == null ? LocalDate.now() : end;
         LocalDate safeStart = start == null ? safeEnd.minusDays(29) : start;
         if (safeStart.isAfter(safeEnd)) throw new IllegalArgumentException("start 不得晚于 end");
-        return records.findByUserAndRecordDateBetween(user, safeStart, safeEnd, PageRequest.of(page, size, Sort.by("recordDate").descending())).map(this::toResponse);
+        Page<HabitDtos.HabitResponse> result = records.findByUserAndRecordDateBetween(user, safeStart, safeEnd, PageRequest.of(page, size, Sort.by("recordDate").descending())).map(this::toResponse);
+        return PageResponse.from(result);
     }
 
     @Transactional(readOnly = true)
