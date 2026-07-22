@@ -27,10 +27,14 @@ public class ReportExporter {
             row(summary, 0, header, "Type", "Period", "Records", "Avg sleep (h)", "Avg diet", "Exercise (min)", "Avg hydration (ml)", "Risk drinks (ml)", "Achievement");
             row(summary, 1, null, report.type(), report.periodStart() + " to " + report.periodEnd(), report.recordCount(), report.averageSleepHours(), report.averageDietScore(), report.totalExerciseMinutes(), report.averageHydrationMl(), report.totalRiskDrinkVolumeMl(), report.achievementRate() + "%");
             Sheet trends = book.createSheet("Daily trends");
-            row(trends, 0, header, "Date", "Sleep (h)", "Diet score", "Exercise (min)", "Hydration (ml)", "Risk drinks (ml)", "Achieved");
+            row(trends, 0, header, "Date", "Sleep (h)", "Night sleep (h)", "Nap sleep (h)", "Diet score",
+                    "Exercise (min)", "Moderate equivalent (min)", "Exercise types", "Hydration (ml)",
+                    "Risk drinks (ml)", "Achieved");
             int i = 1;
             for (var d : report.dailyTrends())
-                row(trends, i++, null, d.date(), d.sleepHours(), d.dietScore(), d.exerciseMinutes(), d.hydrationMl(), d.riskDrinkVolumeMl(), d.achieved() ? "Yes" : "No");
+                row(trends, i++, null, d.date(), d.sleepHours(), d.nightSleepHours(), d.napSleepHours(), d.dietScore(),
+                        d.exerciseMinutes(), d.moderateEquivalentExerciseMinutes(), formatExerciseTypes(d), d.hydrationMl(),
+                        d.riskDrinkVolumeMl(), d.achieved() ? "Yes" : "No");
             Sheet weekly = book.createSheet("Weekly summaries");
             row(weekly, 0, header, "Week start", "Avg sleep (h)", "Exercise (min)", "Avg hydration (ml)", "Risk drinks (ml)");
             i = 1;
@@ -62,14 +66,18 @@ public class ReportExporter {
             doc.add(new Paragraph("Records: " + r.recordCount() + " | Avg sleep: " + r.averageSleepHours() + " h | Avg diet: " + r.averageDietScore() + " | Exercise: " + r.totalExerciseMinutes() + " min | Avg hydration: " + r.averageHydrationMl() + " ml | Risk drinks: " + r.totalRiskDrinkVolumeMl() + " ml | Achievement: " + r.achievementRate() + "%", normal));
             doc.add(Chunk.NEWLINE);
             doc.add(new Paragraph("Daily trends", title));
-            PdfPTable table = new PdfPTable(7);
-            for (String h : new String[]{"Date", "Sleep", "Diet", "Exercise", "Hydration", "Risk drinks", "Achieved"})
+            PdfPTable table = new PdfPTable(11);
+            for (String h : new String[]{"Date", "Sleep", "Night", "Nap", "Diet", "Exercise", "Equivalent", "Types", "Hydration", "Risk drinks", "Achieved"})
                 table.addCell(new Phrase(h, normal));
             for (var d : r.dailyTrends()) {
                 table.addCell(d.date().toString());
                 table.addCell(d.sleepHours() + " h");
+                table.addCell(d.nightSleepHours() + " h");
+                table.addCell(d.napSleepHours() + " h");
                 table.addCell(String.valueOf(d.dietScore()));
                 table.addCell(d.exerciseMinutes() + " min");
+                table.addCell(d.moderateEquivalentExerciseMinutes() + " min");
+                table.addCell(formatExerciseTypes(d));
                 table.addCell(d.hydrationMl() + " ml");
                 table.addCell(d.riskDrinkVolumeMl() + " ml");
                 table.addCell(d.achieved() ? "Yes" : "No");
@@ -111,5 +119,11 @@ public class ReportExporter {
             if (v instanceof Number n) cell.setCellValue(n.doubleValue());
             else cell.setCellValue(String.valueOf(v));
         }
+    }
+
+    private String formatExerciseTypes(com.fzdzzj.lifehabitassistant.pojo.AnalysisDtos.DailyTrend dailyTrend) {
+        return dailyTrend.exerciseMinutesByType().entrySet().stream()
+                .map(entry -> entry.getKey().name() + ": " + entry.getValue() + " min")
+                .collect(java.util.stream.Collectors.joining("; "));
     }
 }

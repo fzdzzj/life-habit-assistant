@@ -47,10 +47,17 @@ public record DrinkHealthRules(Map<DrinkType, BigDecimal> hydrationRatios,
     }
 
     public List<String> riskMessages(List<HabitRecord> records) {
-        int sugary = volume(records, DrinkType.SUGAR_SWEETENED_DRINK);
-        int carbonated = volume(records, DrinkType.CARBONATED_SWEET_DRINK);
-        int energy = volume(records, DrinkType.ENERGY_DRINK);
-        int alcohol = volume(records, DrinkType.ALCOHOL);
+        java.util.EnumMap<DrinkType, Integer> volumes = new java.util.EnumMap<>(DrinkType.class);
+        records.stream().flatMap(record -> record.getDrinkRecords().stream())
+                .forEach(record -> volumes.merge(record.getDrinkType(), record.getVolumeMl(), Integer::sum));
+        return riskMessages(volumes);
+    }
+
+    public List<String> riskMessages(Map<DrinkType, Integer> volumes) {
+        int sugary = volumes.getOrDefault(DrinkType.SUGAR_SWEETENED_DRINK, 0);
+        int carbonated = volumes.getOrDefault(DrinkType.CARBONATED_SWEET_DRINK, 0);
+        int energy = volumes.getOrDefault(DrinkType.ENERGY_DRINK, 0);
+        int alcohol = volumes.getOrDefault(DrinkType.ALCOHOL, 0);
         java.util.ArrayList<String> messages = new java.util.ArrayList<>();
         if (sugary >= sugaryRiskVolumeMl) messages.add("含糖饮料累计达到 " + sugary + " ml");
         if (carbonated >= carbonatedSweetRiskVolumeMl) messages.add("含糖碳酸饮料累计达到 " + carbonated + " ml");
@@ -59,8 +66,4 @@ public record DrinkHealthRules(Map<DrinkType, BigDecimal> hydrationRatios,
         return List.copyOf(messages);
     }
 
-    private int volume(List<HabitRecord> records, DrinkType type) {
-        return records.stream().flatMap(record -> record.getDrinkRecords().stream())
-                .filter(record -> record.getDrinkType() == type).mapToInt(DrinkRecord::getVolumeMl).sum();
-    }
 }

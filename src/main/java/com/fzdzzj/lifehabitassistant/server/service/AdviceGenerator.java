@@ -1,10 +1,8 @@
 package com.fzdzzj.lifehabitassistant.server.service;
 
 import com.fzdzzj.lifehabitassistant.pojo.AnalysisDtos;
-import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
-
-import java.util.List;
+import com.fzdzzj.lifehabitassistant.pojo.HealthStatistics;
 
 public interface AdviceGenerator {
-    AnalysisDtos.AnalysisResponse generate(int days, List<HabitRecord> records);
+    AnalysisDtos.AnalysisResponse generate(int days, HealthStatistics statistics);
 }
