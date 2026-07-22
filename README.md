@@ -96,3 +96,13 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 每个模块遵循：`Issue → codex/<issue>-<module> → 测试 → Conventional Commit → Push → PR → 合并 → 关闭 Issue`。
 
 仅使用仓库 `fzdzzj/life-habit-assistant`。
+
+## 本地 MySQL 配置
+
+项目通过 `src/main/resources/db/schema.sql` 初始化 `users` 与 `habit_records` 两张表。
+
+1. 创建本地配置文件：`Copy-Item .env.example .env`
+2. 在 `.env` 中填写本机 MySQL 连接信息和 JWT 密钥。
+3. 创建数据库 `life_habit_assistant`，再执行 `src/main/resources/db/schema.sql`。
+
+`.env` 已被 Git 忽略，不能提交；`.env.example` 只保留字段模板，不包含真实密码或密钥。
