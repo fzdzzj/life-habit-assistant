@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -26,7 +25,7 @@ class HabitServiceTest {
         CurrentUser currentUser = mock(CurrentUser.class);
         User user = new User("demo", "hash");
         HabitDtos.HabitRequest request = new HabitDtos.HabitRequest(
-                LocalDate.of(2026, 7, 21), LocalTime.of(23, 30), LocalTime.of(7, 0), 4, 45, 1800, "walked");
+                LocalDate.of(2026, 7, 21), 4, 45, 1800, "walked");
         when(currentUser.require()).thenReturn(user);
         when(records.findByUserAndRecordDate(user, request.recordDate())).thenReturn(Optional.empty());
         when(records.save(any(HabitRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -36,7 +35,7 @@ class HabitServiceTest {
         ArgumentCaptor<HabitRecord> captor = ArgumentCaptor.forClass(HabitRecord.class);
         verify(records).save(captor.capture());
         assertEquals(user, captor.getValue().getUser());
-        assertEquals(450, response.sleepMinutes());
+        assertEquals(0, response.sleepMinutes());
         assertEquals("walked", response.note());
     }
 
@@ -46,8 +45,9 @@ class HabitServiceTest {
         CurrentUser currentUser = mock(CurrentUser.class);
         User user = new User("demo", "hash");
         LocalDate date = LocalDate.of(2026, 7, 21);
-        HabitRecord existing = new HabitRecord(user, date, LocalTime.of(22, 0), LocalTime.of(6, 0), 3, 20, 1200, null);
-        HabitDtos.HabitRequest request = new HabitDtos.HabitRequest(date, LocalTime.of(23, 0), LocalTime.of(7, 0), 5, 60, 2000, "updated");
+        HabitRecord existing = new HabitRecord(user, date, 3, 20, 1200, null);
+        existing.addSleepSession(new com.fzdzzj.lifehabitassistant.pojo.SleepSession(existing, com.fzdzzj.lifehabitassistant.pojo.SleepType.NIGHT, date.minusDays(1).atTime(22, 0), date.atTime(6, 0)));
+        HabitDtos.HabitRequest request = new HabitDtos.HabitRequest(date, 5, 60, 2000, "updated");
         when(currentUser.require()).thenReturn(user);
         when(records.findByUserAndRecordDate(user, date)).thenReturn(Optional.of(existing));
         when(records.save(existing)).thenReturn(existing);

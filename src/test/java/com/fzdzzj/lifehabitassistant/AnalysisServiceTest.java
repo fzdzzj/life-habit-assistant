@@ -10,7 +10,6 @@ import com.fzdzzj.lifehabitassistant.server.service.HabitService;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,9 +26,11 @@ class AnalysisServiceTest {
         HealthThresholds thresholds = new HealthThresholds(420, 540, 1500, 30, 3);
         LocalDate today = LocalDate.now();
         User user = new User("demo", "hash");
-        List<HabitRecord> records = List.of(
-                new HabitRecord(user, today.minusDays(1), LocalTime.of(23, 0), LocalTime.of(7, 0), 4, 30, 1500, null),
-                new HabitRecord(user, today, LocalTime.of(23, 30), LocalTime.of(7, 0), 5, 60, 2000, null));
+        HabitRecord yesterday = new HabitRecord(user, today.minusDays(1), 4, 30, 1500, null);
+        yesterday.addSleepSession(new com.fzdzzj.lifehabitassistant.pojo.SleepSession(yesterday, com.fzdzzj.lifehabitassistant.pojo.SleepType.NIGHT, today.minusDays(2).atTime(23, 0), today.minusDays(1).atTime(7, 0)));
+        HabitRecord current = new HabitRecord(user, today, 5, 60, 2000, null);
+        current.addSleepSession(new com.fzdzzj.lifehabitassistant.pojo.SleepSession(current, com.fzdzzj.lifehabitassistant.pojo.SleepType.NIGHT, today.minusDays(1).atTime(23, 30), today.atTime(7, 0)));
+        List<HabitRecord> records = List.of(yesterday, current);
         when(habits.range(any(), any())).thenReturn(records);
 
         AnalysisDtos.TrendResponse response = new AnalysisService(habits, advice, thresholds).trend(7);

@@ -29,7 +29,7 @@ public class HabitController {
     }
 
     @GetMapping
-    public Result<PageResponse<HabitDtos.HabitResponse>> list(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate start, @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate end, @RequestParam(defaultValue = "0") @Min(0) int page, @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+    public Result<PageResponse<HabitDtos.HabitResponse>> list(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate start, @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate end, @RequestParam(defaultValue = "0") @Min(value = 0, message = "page 不得小于 0") int page, @RequestParam(defaultValue = "20") @Min(value = 1, message = "size 不得小于 1") @Max(value = 100, message = "size 不得超过 100") int size) {
         return Result.success(service.list(start, end, page, size));
     }
 
