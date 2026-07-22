@@ -10,6 +10,7 @@ import com.fzdzzj.lifehabitassistant.server.dao.SleepSessionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -59,6 +60,9 @@ public class SleepSessionService {
     }
 
     private void validate(LocalDate recordDate, SleepSessionDtos.SleepSessionRequest request, List<SleepSession> existing, Long currentId) {
+        if (Duration.between(request.sleepStartAt(), request.wakeAt()).compareTo(Duration.ofHours(24)) > 0) {
+            throw new IllegalArgumentException("单段睡眠时长不得超过 24 小时");
+        }
         if (!request.wakeAt().isAfter(request.sleepStartAt())) throw new IllegalArgumentException("wakeAt 必须晚于 sleepStartAt");
         if (!request.wakeAt().toLocalDate().equals(recordDate)) throw new IllegalArgumentException("recordDate 必须等于 wakeAt 的日期");
         if (request.wakeAt().isAfter(LocalDateTime.now())) throw new IllegalArgumentException("wakeAt 不得晚于当前时间");

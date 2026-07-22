@@ -7,6 +7,7 @@ import com.fzdzzj.lifehabitassistant.server.service.HabitService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.PastOrPresent;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.validation.annotation.Validated;
@@ -34,12 +35,12 @@ public class HabitController {
     }
 
     @GetMapping("/{date}")
-    public Result<HabitDtos.HabitResponse> get(@PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+    public Result<HabitDtos.HabitResponse> get(@PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) @PastOrPresent(message = "date 不得晚于今天") LocalDate date) {
         return Result.success(service.get(date));
     }
 
     @DeleteMapping("/{date}")
-    public Result<Void> delete(@PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+    public Result<Void> delete(@PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) @PastOrPresent(message = "date 不得晚于今天") LocalDate date) {
         service.delete(date);
         return Result.success(null);
     }
