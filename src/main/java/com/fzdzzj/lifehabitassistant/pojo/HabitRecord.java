@@ -1,6 +1,7 @@
 package com.fzdzzj.lifehabitassistant.pojo;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -19,12 +20,15 @@ public class HabitRecord {
     private LocalDate recordDate;
     @OneToMany(mappedBy = "habitRecord", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sleepStartAt ASC")
+    @BatchSize(size = 50)
     private final List<SleepSession> sleepSessions = new ArrayList<>();
     @OneToMany(mappedBy = "habitRecord", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("startedAt ASC")
+    @BatchSize(size = 50)
     private final List<ExerciseSession> exerciseSessions = new ArrayList<>();
     @OneToMany(mappedBy = "habitRecord", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("recordedAt ASC")
+    @BatchSize(size = 50)
     private final List<DrinkRecord> drinkRecords = new ArrayList<>();
     @Column(name = "diet_score", nullable = false)
     private int dietScore;
