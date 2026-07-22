@@ -16,7 +16,7 @@ CREATE TABLE habit_records
     record_date      DATE    NOT NULL,
     bedtime          TIME    NOT NULL,
     wake_time        TIME    NOT NULL,
-    diet_score       TINYINT NOT NULL,
+    diet_score       INT     NOT NULL,
     exercise_minutes INT     NOT NULL,
     water_ml         INT     NOT NULL,
     note             VARCHAR(500),
