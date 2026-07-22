@@ -112,3 +112,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 - 默认启用 `dev` Profile，并读取项目根目录的本地 `.env`。
 - `prod` Profile 关闭 OpenAPI 与 Swagger UI；部署时必须注入 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USERNAME`、`DB_PASSWORD`、`JWT_SECRET`。
 - 生产启动示例：`SPRING_PROFILES_ACTIVE=prod mvn spring-boot:run`。
+
+### 分页响应
+
+`GET /api/habits` 的 `data` 固定包含 `content`、`page`、`size`、`totalElements`、`totalPages`，不暴露 Spring Data 的内部 `Page` JSON 结构。
