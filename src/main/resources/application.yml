@@ -28,6 +28,16 @@ app:
     minimum-hydration-ml: 1500
     minimum-exercise-minutes: 30
     minimum-diet-score: 3
+  ai:
+    advice:
+      enabled: ${AI_ADVICE_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      model: ${OPENAI_MODEL:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      daily-limit: ${AI_ADVICE_DAILY_LIMIT:3}
+      monthly-limit: ${AI_ADVICE_MONTHLY_LIMIT:30}
+      timeout-seconds: ${AI_ADVICE_TIMEOUT_SECONDS:30}
+      prompt-version: ${AI_ADVICE_PROMPT_VERSION:v1}
   drink:
     hydration-ratios:
       WATER: 1.0

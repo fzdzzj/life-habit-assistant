@@ -15,6 +15,7 @@ public final class ReportDtos {
                                  double averageSleepHours, double averageDietScore, int totalExerciseMinutes,
                                  double averageHydrationMl, int totalRiskDrinkVolumeMl, double achievementRate,
                                  List<AnalysisDtos.DailyTrend> dailyTrends, List<WeekSummary> weeklySummaries,
-                                 List<String> risks, List<String> suggestions) {
+                                 List<String> risks, List<String> suggestions,
+                                 AiAdviceDtos.AdviceSnapshot aiAdvice) {
     }
 }
