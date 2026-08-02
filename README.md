@@ -63,6 +63,9 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 | 饮品明细 | `PUT/DELETE /api/habits/{date}/drink-records/{id}` | 修改或删除一条饮品明细 |
 | 趋势 | `GET /api/trends?days=7` | 睡眠、饮食、运动、饮水与连续天数 |
 | 建议 | `POST /api/analyses?days=7` | 规则型风险和建议 |
+| AI 建议 | `POST /api/ai/analyses?days=7` | 显式触发的 OpenAI 个性化解读；未启用或失败时自动返回规则建议 |
+| AI 建议 | `POST /api/ai/reports/weekly?week=YYYY-MM-DD` | 自然周 AI 解读 |
+| AI 建议 | `POST /api/ai/reports/monthly?month=YYYY-MM` | 自然月 AI 解读 |
 | 报告 | `GET /api/reports/weekly?week=YYYY-MM-DD` | 自然周报告 |
 | 报告 | `GET /api/reports/monthly?month=YYYY-MM` | 自然月报告 |
 | 导出 | `GET /api/reports/weekly/export?week=...&format=xlsx|pdf` | 下载周报 |
@@ -80,6 +83,12 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 
 `recordDate` 是当天归属日。先创建每日记录，再通过独立接口维护睡眠片段、运动明细和饮品明细。饮品使用 `GET/POST /api/habits/{date}/drink-records`、`PUT/DELETE /api/habits/{date}/drink-records/{id}`；`hydrationMl` 是按饮品类型计算的有效补水，不再把所有饮料简单等同于饮水。详见 [饮品模块设计](docs/drink-records.md)。
 
+### OpenAI 个性化建议
+
+AI 建议默认关闭，且只在用户显式调用 `POST /api/ai/...` 时触发；打开报告或下载导出**不会**调用模型，只会读取该周期最近一次已保存的解读。规则统计与风险判定始终由本地规则引擎负责，模型只基于脱敏聚合指标生成自然语言解读，不会收到用户名、账号 ID、备注或原始记录。每次显式请求都会保存历史（AI 或规则降级），周报/月报导出会附加对应周期最近一次已保存内容。
+
+启用方式：在 `.env` 中设置 `AI_ADVICE_ENABLED=true`，并填写 `OPENAI_API_KEY` 与 `OPENAI_MODEL`（模型 ID 以 OpenAI 官方文档为准）；配额默认每天 3 次、每月 30 次，可用 `AI_ADVICE_DAILY_LIMIT`、`AI_ADVICE_MONTHLY_LIMIT` 调整。详见 [AI 建议模块设计](docs/ai-advice.md)。
+
 ## 演示顺序
 
 注册/登录 → 录入记录 → 查询趋势 → 生成建议 → 查看周报或月报 → 下载 XLSX/PDF。
@@ -90,6 +99,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 - 记录：跨午夜睡眠、同日更新且归属当前用户。
 - 分析：均值、总运动、连续记录、阈值达标。
 - 报告：自然周、闰年月边界、Excel 工作表和 PDF 可打开性。
+- AI 建议：解析容错、禁用/无数据/供应商失败/日额度/月额度的降级、按用户计费与隔离、报告导出只读取已保存建议。
 
 ## Git 协作
 

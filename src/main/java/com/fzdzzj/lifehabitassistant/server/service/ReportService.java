@@ -4,6 +4,9 @@ import com.fzdzzj.lifehabitassistant.pojo.AnalysisDtos;
 import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
 import com.fzdzzj.lifehabitassistant.pojo.HealthStatistics;
 import com.fzdzzj.lifehabitassistant.pojo.ReportDtos;
+import com.fzdzzj.lifehabitassistant.pojo.AiAdviceDtos;
+import com.fzdzzj.lifehabitassistant.pojo.AiAdviceType;
+import com.fzdzzj.lifehabitassistant.server.dao.AiAdviceHistoryRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,11 +22,19 @@ public class ReportService {
     private final HabitService habits;
     private final HealthStatisticsService statistics;
     private final AdviceGenerator advice;
+    private final AiAdviceHistoryRepository history;
+    private final AiAdviceContentParser contentParser;
+    private final CurrentUser currentUser;
 
-    public ReportService(HabitService habits, HealthStatisticsService statistics, AdviceGenerator advice) {
+    public ReportService(HabitService habits, HealthStatisticsService statistics, AdviceGenerator advice,
+                         AiAdviceHistoryRepository history, AiAdviceContentParser contentParser,
+                         CurrentUser currentUser) {
         this.habits = habits;
         this.statistics = statistics;
         this.advice = advice;
+        this.history = history;
+        this.contentParser = contentParser;
+        this.currentUser = currentUser;
     }
 
     @Transactional(readOnly = true)
@@ -46,7 +57,16 @@ public class ReportService {
                 summary.averageDietScore(), summary.totalExerciseMinutes(), summary.averageHydrationMl(),
                 summary.totalRiskDrinkVolumeMl(), achievementRate(summary),
                 summary.dailyStatistics().stream().map(this::daily).toList(), weekly(records),
-                analysis.risks(), analysis.suggestions());
+                analysis.risks(), analysis.suggestions(), latestSavedAdvice(type, start, end));
+    }
+
+    private AiAdviceDtos.AdviceSnapshot latestSavedAdvice(String type, LocalDate start, LocalDate end) {
+        AiAdviceType adviceType = "weekly".equals(type) ? AiAdviceType.WEEKLY_REPORT : AiAdviceType.MONTHLY_REPORT;
+        return history.findFirstByUserIdAndAdviceTypeAndPeriodStartAndPeriodEndOrderByCreatedAtDesc(
+                        currentUser.require().getId(), adviceType, start, end)
+                .map(saved -> new AiAdviceDtos.AdviceSnapshot(saved.getId(), saved.getSource(),
+                        contentParser.parse(saved.getContent()), saved.getCreatedAt()))
+                .orElse(null);
     }
 
     private List<ReportDtos.WeekSummary> weekly(List<HabitRecord> records) {

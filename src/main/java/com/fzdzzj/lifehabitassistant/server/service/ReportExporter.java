@@ -45,7 +45,25 @@ public class ReportExporter {
             i = 1;
             for (String risk : report.risks()) row(advice, i++, null, "Risk", risk);
             for (String suggestion : report.suggestions()) row(advice, i++, null, "Suggestion", suggestion);
-            for (Sheet s : java.util.List.of(summary, trends, weekly, advice))
+            Sheet aiAdvice = book.createSheet("AI advice");
+            row(aiAdvice, 0, header, "Category", "Content");
+            i = 1;
+            if (report.aiAdvice() == null) {
+                row(aiAdvice, i, null, "Status", "该周期没有已保存的 AI 解读；请先显式调用 AI 解读接口");
+            } else {
+                var content = report.aiAdvice().content();
+                row(aiAdvice, i++, null, "Source", report.aiAdvice().source().name());
+                row(aiAdvice, i++, null, "Created at", report.aiAdvice().createdAt());
+                row(aiAdvice, i++, null, "Period summary", content.periodSummary());
+                row(aiAdvice, i++, null, "Risk explanation", content.riskExplanation());
+                for (String recommendation : content.recommendations()) {
+                    row(aiAdvice, i++, null, "Recommendation", recommendation);
+                }
+                row(aiAdvice, i++, null, "Next period plan", content.nextPeriodPlan());
+                row(aiAdvice, i++, null, "Encouragement", content.encouragement());
+                row(aiAdvice, i++, null, "Disclaimer", content.disclaimer());
+            }
+            for (Sheet s : java.util.List.of(summary, trends, weekly, advice, aiAdvice))
                 for (int c = 0; c < s.getRow(0).getLastCellNum(); c++) s.autoSizeColumn(c);
             book.write(out);
             return out.toByteArray();
@@ -103,6 +121,26 @@ public class ReportExporter {
             for (String v : r.risks()) doc.add(new Paragraph("- " + v, normal));
             doc.add(new Paragraph("Suggestions", title));
             for (String v : r.suggestions()) doc.add(new Paragraph("- " + v, normal));
+            doc.add(Chunk.NEWLINE);
+            doc.add(new Paragraph("AI advice", title));
+            if (r.aiAdvice() == null) {
+                doc.add(new Paragraph("该周期没有已保存的 AI 解读；请先显式调用 AI 解读接口。", normal));
+            } else {
+                var content = r.aiAdvice().content();
+                doc.add(new Paragraph("Source: " + r.aiAdvice().source().name() + " | Created at: " + r.aiAdvice().createdAt(), normal));
+                doc.add(new Paragraph("Period summary", title));
+                doc.add(new Paragraph(content.periodSummary(), normal));
+                doc.add(new Paragraph("Risk explanation", title));
+                doc.add(new Paragraph(content.riskExplanation(), normal));
+                doc.add(new Paragraph("Recommendations", title));
+                for (String v : content.recommendations()) doc.add(new Paragraph("- " + v, normal));
+                doc.add(new Paragraph("Next period plan", title));
+                doc.add(new Paragraph(content.nextPeriodPlan(), normal));
+                doc.add(new Paragraph("Encouragement", title));
+                doc.add(new Paragraph(content.encouragement(), normal));
+                doc.add(new Paragraph("Disclaimer", title));
+                doc.add(new Paragraph(content.disclaimer(), normal));
+            }
             doc.close();
             return out.toByteArray();
         } catch (DocumentException | IOException e) {
