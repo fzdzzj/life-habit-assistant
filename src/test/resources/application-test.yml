@@ -12,3 +12,9 @@ spring:
 app:
   jwt:
     secret: test-only-jwt-secret-with-at-least-thirty-two-characters
+  security:
+    rate-limit:
+      register-per-ip: 10000
+      login-per-ip: 10000
+      login-failures: 1000
+      login-cooldown: 1h
