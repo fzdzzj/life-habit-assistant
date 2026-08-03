@@ -87,6 +87,30 @@ class ValidationBoundaryHttpIntegrationTest {
                 .andExpect(jsonPath("$.message").value("format: 不得为空"));
     }
 
+    @Test
+    void deepPaginationShouldBeRejectedWhileBoundaryStaysAllowed() throws Exception {
+        String token = register("page-" + UUID.randomUUID());
+
+        mockMvc.perform(get("/api/habits")
+                        .param("page", "100")
+                        .param("size", "100")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(40000));
+
+        mockMvc.perform(get("/api/habits")
+                        .param("page", "99")
+                        .param("size", "100")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/habits")
+                        .param("size", "101")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(40000));
+    }
+
     private String register(String username) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
