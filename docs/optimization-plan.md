@@ -44,6 +44,12 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 | --- | --- | --- | --- | --- |
 | 真实 MySQL 迁移验证 | 测试用 H2，Flyway SQL 只在本地 MySQL 手工跑过 | Testcontainers 拉起 mysql:8.0.36，空库上 `flyway.migrate()` 两次：首次应用 V1-V6、第二次为 0，并断言迁移历史完整且全部 SUCCESS；`disabledWithoutDocker` 使本地无 Docker 时跳过、CI 必跑 | [FlywayMySqlMigrationIntegrationTest.java](../src/test/java/com/fzdzzj/lifehabitassistant/FlywayMySqlMigrationIntegrationTest.java)、pom.xml（testcontainers junit-jupiter/mysql） | CI 上该测试通过；本地无 Docker 显示 skipped，不破坏其他测试 |
 
+### AI 提示词文件化（Issue #54）
+
+| 优化项 | 问题 | 方案 | 落点 | 验证 |
+| --- | --- | --- | --- | --- |
+| AI 提示词文件化 | 系统提示词是 Java 常量，改提示词要动代码 | 移到 `resources/prompts/ai-advice-system-<version>.txt`（当前 v1，内容与原常量一致）；`AiSystemPromptLoader` 启动时加载并缓存，版本非法或文件缺失快速失败；`AiAdviceService` 消费 loader | [AiSystemPromptLoader.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AiSystemPromptLoader.java)、[ai-advice-system-v1.txt](../src/main/resources/prompts/ai-advice-system-v1.txt) | `AiSystemPromptLoaderTest` 4 项：默认 v1 加载、自定义版本走测试资源、非法版本拒绝、缺失文件快速失败 |
+
 ## 三、关键取舍（防止“换个思路做坏”的约束）
 
 - **配额为什么用独立表而不是历史表计数**：历史表无法区分“调用失败（应计费）”和“未调用降级（不应计费）”；独立表只记录已发起的模型请求，语义干净。
@@ -65,7 +71,6 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 
 | 优化项 | 现状 | 方案 | 验收标准 |
 | --- | --- | --- | --- |
-| AI 提示词文件化 | 系统提示词是 Java 常量 | 移到 `resources/prompts/*.txt`，版本随文件 | 改提示词不重新编译 |
 | 深分页 | `PageRequest.of(page, size)` 深页码全表扫描 | 游标分页或维持页码上限 | 深页码查询耗时可控 |
 | 统计预聚合 | 区间记录全量载入内存聚合 | 数据量有真实压力后再做 DB 聚合/预聚合 | 暂缓，不做过度设计 |
 

@@ -31,29 +31,13 @@ public class AiAdviceService {
     private static final Logger log = LoggerFactory.getLogger(AiAdviceService.class);
     private static final String DISCLAIMER = "本建议仅作健康生活方式参考，不构成医疗诊断或治疗建议；如有健康问题请咨询医生。";
 
-    private static final String SYSTEM_PROMPT = """
-            你是一个生活习惯助手的解读模块。任务：基于用户提供的脱敏健康聚合指标，生成一份温和、可执行的个人健康生活方式解读。
-
-            成功标准：
-            - 只使用输入中提供的事实，不得编造或推断新的指标。
-            - 建议必须安全：不诊断疾病、不开药、不推荐极端节食或危险训练；涉及健康问题应先建议咨询医生。
-            - 使用简体中文，语气鼓励但不夸张。
-
-            输出要求：只输出一个 JSON 对象，不要 Markdown 围栏，也不要任何额外文字。字段如下：
-            - periodSummary: 字符串，概括该周期整体表现。
-            - riskExplanation: 字符串，解释最值得注意的风险；若没有风险写“暂无明显风险”。
-            - recommendations: 字符串数组，最多 3 条可执行建议。
-            - nextPeriodPlan: 字符串，下一周期 1-2 条具体行动计划。
-            - encouragement: 字符串，一句鼓励。
-            - disclaimer: 字符串，固定为“本建议仅作健康生活方式参考，不构成医疗诊断或治疗建议；如有健康问题请咨询医生。”
-            """;
-
     private final HabitService habits;
     private final HealthStatisticsService statistics;
     private final RuleBasedAdviceGenerator ruleAdvice;
     private final AiAdviceHistoryRepository historyRepository;
     private final AiQuotaUsageRepository quotaRepository;
     private final AiAdviceProperties properties;
+    private final AiSystemPromptLoader promptLoader;
     private final OpenAiChatClient chatClient;
     private final AiAdviceContentParser contentParser;
     private final ObjectMapper objectMapper;
@@ -62,7 +46,7 @@ public class AiAdviceService {
     public AiAdviceService(HabitService habits, HealthStatisticsService statistics,
                            RuleBasedAdviceGenerator ruleAdvice, AiAdviceHistoryRepository historyRepository,
                            AiQuotaUsageRepository quotaRepository, AiAdviceProperties properties,
-                           OpenAiChatClient chatClient,
+                           AiSystemPromptLoader promptLoader, OpenAiChatClient chatClient,
                            AiAdviceContentParser contentParser, ObjectMapper objectMapper, CurrentUser currentUser) {
         this.habits = habits;
         this.statistics = statistics;
@@ -70,6 +54,7 @@ public class AiAdviceService {
         this.historyRepository = historyRepository;
         this.quotaRepository = quotaRepository;
         this.properties = properties;
+        this.promptLoader = promptLoader;
         this.chatClient = chatClient;
         this.contentParser = contentParser;
         this.objectMapper = objectMapper;
@@ -118,7 +103,7 @@ public class AiAdviceService {
                     null, false);
         }
         try {
-            String raw = chatClient.chat(SYSTEM_PROMPT, userPrompt(days, summary, rule));
+            String raw = chatClient.chat(promptLoader.load(), userPrompt(days, summary, rule));
             AiAdviceDtos.AiAdviceContent content = contentParser.parse(raw);
             return persistAndRespond(user, type, start, end, AdviceSource.AI, content,
                     properties.model(), true);
