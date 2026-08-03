@@ -28,6 +28,8 @@ app:
       login-per-ip: 20
       login-failures: 5
       login-cooldown: 15m
+  pagination:
+    max-offset: 10000
   health:
     minimum-sleep-minutes: 420
     maximum-sleep-minutes: 540

@@ -1,6 +1,7 @@
 package com.fzdzzj.lifehabitassistant.server.service;
 
 import com.fzdzzj.lifehabitassistant.common.ApiException;
+import com.fzdzzj.lifehabitassistant.config.PaginationProperties;
 import com.fzdzzj.lifehabitassistant.pojo.HabitDtos;
 import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
 import com.fzdzzj.lifehabitassistant.pojo.PageResponse;
@@ -22,11 +23,14 @@ public class HabitService {
     private final HabitRecordRepository records;
     private final CurrentUser currentUser;
     private final DrinkHealthRules drinkRules;
+    private final PaginationProperties pagination;
 
-    public HabitService(HabitRecordRepository records, CurrentUser currentUser, DrinkHealthRules drinkRules) {
+    public HabitService(HabitRecordRepository records, CurrentUser currentUser, DrinkHealthRules drinkRules,
+                        PaginationProperties pagination) {
         this.records = records;
         this.currentUser = currentUser;
         this.drinkRules = drinkRules;
+        this.pagination = pagination;
     }
 
     @Transactional
@@ -60,6 +64,11 @@ public class HabitService {
         if (safeEnd.isAfter(today)) throw new IllegalArgumentException("end 不得晚于今天");
         if (safeStart.isAfter(safeEnd)) throw new IllegalArgumentException("start 不得晚于 end");
         if (ChronoUnit.DAYS.between(safeStart, safeEnd) > 365) throw new IllegalArgumentException("查询日期范围不得超过 366 天");
+        long offset = (long) page * size;
+        if (offset >= pagination.maxOffset()) {
+            throw new IllegalArgumentException("页码过深（offset 不得超过 " + pagination.maxOffset()
+                    + "），请缩小日期范围或调整 start 参数");
+        }
         Page<HabitDtos.HabitResponse> result = records.findByUserAndRecordDateBetween(user, safeStart, safeEnd, PageRequest.of(page, size, Sort.by("recordDate").descending())).map(this::toResponse);
         return PageResponse.from(result);
     }
