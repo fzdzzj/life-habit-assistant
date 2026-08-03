@@ -15,6 +15,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -56,6 +57,29 @@ class HabitServiceTest {
 
         verify(records).save(existing);
         assertEquals(480, response.sleepMinutes());
+        assertEquals(5, response.dietScore());
+        assertEquals("updated", response.note());
+    }
+
+    @Test
+    void retriesOnceWhenConcurrentInsertViolatesUniqueConstraint() {
+        HabitRecordRepository records = mock(HabitRecordRepository.class);
+        CurrentUser currentUser = mock(CurrentUser.class);
+        User user = new User("demo", "hash");
+        LocalDate date = LocalDate.of(2026, 7, 21);
+        HabitRecord existing = new HabitRecord(user, date, 3, null);
+        HabitDtos.HabitRequest request = new HabitDtos.HabitRequest(date, 5, "updated");
+        when(currentUser.require()).thenReturn(user);
+        when(records.findByUserAndRecordDate(user, date))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(existing));
+        when(records.save(any(HabitRecord.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate"))
+                .thenReturn(existing);
+
+        HabitDtos.HabitResponse response = new HabitService(records, currentUser, TestDrinkRules.defaults()).save(request);
+
+        verify(records, times(2)).findByUserAndRecordDate(user, date);
         assertEquals(5, response.dietScore());
         assertEquals("updated", response.note());
     }

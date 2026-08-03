@@ -139,6 +139,8 @@
 6. **mock save 返回 null**：单测里 `history.save(...)` 默认返回 null，服务取 `getId()` 直接 NPE。解决：mock 用 `thenAnswer(invocation -> invocation.getArgument(0))` 原样返回入参。
 7. **Spring AI 版本冲突**：详情见设计决策 11，教训是先查版本矩阵再决定依赖，而不是“最新版直接加”。
 8. **导出中文乱码**：PDF 必须显式指定中文字体，Excel 字符串按类型写入单元格。
+9. **数据库方言陷阱**：H2 的 MySQL 兼容模式不支持 `ON DUPLICATE KEY UPDATE`，原方案在真实 MySQL 可用但测试必挂。教训：可移植逻辑用 JPA 实体 + 唯一约束兜底，只把两库都支持的通用 SQL（如 `UPDATE ... WHERE used < limit`）写成 native。
+10. **一级缓存读旧值**：同一事务里用原生 SQL 更新配额行后，再用实体查询会命中 Hibernate 一级缓存，读到更新前的 `used_count`。教训：原生 SQL 改过的行，读取也要用原生标量查询，不要混用两套访问路径。
 
 ## 六、面试自问自答
 
