@@ -51,6 +51,17 @@ GET /api/reports/weekly|monthly[/export]
 
 配额按“已发起的模型请求次数”统计，包括失败尝试（防止快速失败绕过限制）；未发起请求的降级（禁用、无密钥、无记录、配额已满）不计入配额。
 
+配额计数放在独立表 `ai_quota_usage`（`user_id + period_type + period_key` 唯一，按天/按月各一行），使用行级原子扣减：
+
+```sql
+UPDATE ai_quota_usage
+SET used_count = used_count + 1, updated_at = NOW()
+WHERE user_id = ? AND period_type = ? AND period_key = ?
+  AND used_count < ?
+```
+
+“先扣后调”：两个并发请求要么都成功占用（每个请求先扣减后再调用模型），要么在配额满时由 UPDATE 影响 0 行触发降级，事务回滚当次已占用的另一周期额度，因此并发不会超卖。实现细节：行占位用 JPA 实体 + 唯一约束兜底（并发冲突时重查），因为 H2 的 MySQL 兼容模式不支持 `ON DUPLICATE KEY UPDATE`；额度读取用原生标量查询，避免同一事务内 Hibernate 一级缓存返回 UPDATE 前的旧值。
+
 ## 接口
 
 | 方法 | 路径 | 说明 |

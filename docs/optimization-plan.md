@@ -1,0 +1,74 @@
+# 后端优化方案与执行记录
+
+> 用途：固定本轮优化范围与验收标准，防止实施过程中扩大范围或偏离原目标。后续每做一项优化，先在这里更新“本轮范围”，再按 Issue → 分支 → 测试 → PR 流程执行。
+
+## 一、优化总览
+
+本轮主题：**正确性收口**。只做四件事，不顺手改其他模块：
+
+1. 500 错误可排查（兜底异常记录日志）。
+2. 并发重复提交不撞唯一约束（原子重试，保持幂等更新语义）。
+3. AI 配额成为硬约束（独立配额表 + 行级原子扣减，并发不超卖）。
+4. 合并前自动验证（GitHub Actions CI）。
+
+对应 Issue #44、分支 `codex/44-reliability-hardening`、PR #45。
+
+## 二、本轮已完成（Issue #44 / PR #45）
+
+| 优化项 | 问题 | 方案 | 落点 | 验证 |
+| --- | --- | --- | --- | --- |
+| 500 日志 | `handleUnexpected` 只返回通用错误，生产排障无堆栈 | 兜底处理器加 `Logger.error` | [ApiExceptionHandler.java](../src/main/java/com/fzdzzj/lifehabitassistant/common/ApiExceptionHandler.java) | `ApiExceptionHandlerTest` 断言统一 500 结构；日志输出堆栈 |
+| 并发重复提交 | `save` 先查后存，并发请求可同时通过检查，撞唯一约束变成 500 | 捕获 `DataIntegrityViolationException` 后重查重试一次 | [HabitService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/HabitService.java) | `retriesOnceWhenConcurrentInsertViolatesUniqueConstraint` |
+| AI 配额硬约束 | 历史表计数是“先查后调”，并发可超卖；且无法区分失败尝试与未尝试降级 | 独立 `ai_quota_usage` 表，`UPDATE ... WHERE used_count < limit` 原子扣减，先扣后调，事务回滚保证日/月两行一致 | [AiQuotaUsageRepository.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/dao/AiQuotaUsageRepository.java)、[AiAdviceService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AiAdviceService.java)、V6 迁移 | `AiQuotaUsageRepositoryTest`（唯一约束、原子扣减到上限、日/月独立计数） |
+| CI | `.github/workflows` 是空目录，PR 合并无自动验证 | JDK 21 + Maven 缓存 + `mvn -B test`，push/PR 触发 | [ci.yml](../.github/workflows/ci.yml) | PR #45 的 CI 检查通过 |
+
+## 三、关键取舍（防止“换个思路做坏”的约束）
+
+- **配额为什么用独立表而不是历史表计数**：历史表无法区分“调用失败（应计费）”和“未调用降级（不应计费）”；独立表只记录已发起的模型请求，语义干净。
+- **为什么“先扣后调”**：并发两个请求要么都先占用成功再调用，要么配额满时 UPDATE 影响 0 行触发降级并回滚另一周期的占用，杜绝超卖。
+- **为什么不用 `ON DUPLICATE KEY UPDATE`**：H2 的 MySQL 兼容模式不支持该语法，测试必挂；改用 JPA 实体占位 + 唯一约束兜底（并发冲突重查），只把两库都支持的通用 `UPDATE ... WHERE` 写成 native。
+- **为什么读取配额用原生标量查询**：原生 SQL 更新后，同一事务内实体查询会命中 Hibernate 一级缓存，读到旧值；标量查询直读数据库。
+- **并发重试为什么只一次**：冲突窗口极小，重试一次即可；极端情况下仍冲突按 500 暴露，不无限重试。
+
+## 四、待办优化（供下一步选择，按优先级）
+
+### P0（安全，未做）
+
+| 优化项 | 现状 | 方案 | 验收标准 |
+| --- | --- | --- | --- |
+| 注册/登录限流 | `/api/auth/**` 公开，无速率限制 | 内存限流（IP+用户名、登录失败计数）或部署层限流 | 连续失败被拒绝；限流不影响正常登录 |
+
+### P1（工程与运维）
+
+| 优化项 | 现状 | 方案 | 验收标准 |
+| --- | --- | --- | --- |
+| 健康检查与请求日志 | 无 actuator、无 requestId | `spring-boot-starter-actuator`（prod 只暴露 health）+ 请求日志 MDC | `/actuator/health` 可用；日志可串起单次请求 |
+| 真实 MySQL 迁移验证 | 测试用 H2，Flyway SQL 只在本地 MySQL 跑过 | Testcontainers MySQL 或本地冒烟 profile | V1–V6 在空库可完整执行两次 |
+| AI 提示词文件化 | 系统提示词是 Java 常量 | 移到 `resources/prompts/*.txt`，版本随文件 | 改提示词不重新编译 |
+| 深分页 | `PageRequest.of(page, size)` 深页码全表扫描 | 游标分页或维持页码上限 | 深页码查询耗时可控 |
+| 统计预聚合 | 区间记录全量载入内存聚合 | 数据量有真实压力后再做 DB 聚合/预聚合 | 暂缓，不做过度设计 |
+
+### P2（产品与架构）
+
+| 优化项 | 说明 |
+| --- | --- |
+| 自定义每日目标 | 用户级目标表覆盖全局阈值，统计/建议/AI 提示词读取用户目标 |
+| 前端 | ECharts 消费 `/api/trends`，报告页与 AI 解读展示 |
+| 依赖升级 | Boot 3.3.3 → 3.4/3.5 后把 AI 适配层换成 spring-ai starter；独立任务，需回归安全与 JPA |
+| 报表缓存/异步导出 | 周期报告 TTL 缓存；大区间导出任务表异步生成 |
+
+## 五、明确不做（防跑偏清单）
+
+- 不做角色/RBAC、管理员后台、消息队列、微服务、多端适配（需求文档明确排除）。
+- 不升级 Spring Boot（独立任务，不与本轮混做）。
+- 不引入 Redis（单实例内存限流够用时不加中间件）。
+- 不改 `.env`、不提交任何真实密钥/令牌；只更新 `.env.example`。
+- 不修改已发布的 Flyway 迁移文件，只新增版本。
+- 每项优化仍走 `Issue → codex/<issue>-<module> → 测试 → Conventional Commit → Push → PR → 合并 → 关 Issue`。
+
+## 六、本轮验收标准
+
+- [x] `mvn test`：54 个测试全部通过（新增配额原子性、并发重试、异常兜底测试）。
+- [x] PR #45 的 GitHub Actions CI 通过。
+- [x] Flyway V6 建表（H2 已验证 SQL 语义；真实 MySQL 冒烟列入 P1）。
+- [ ] 本地 MySQL 冒烟：启动应用 → 注册登录 → 录数据 → 趋势/报告 → 导出 → AI 降级路径可走通（需要 `.env` 配置）。

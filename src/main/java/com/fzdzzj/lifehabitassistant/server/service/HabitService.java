@@ -6,6 +6,7 @@ import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
 import com.fzdzzj.lifehabitassistant.pojo.PageResponse;
 import com.fzdzzj.lifehabitassistant.pojo.User;
 import com.fzdzzj.lifehabitassistant.server.dao.HabitRecordRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -31,6 +32,15 @@ public class HabitService {
     @Transactional
     public HabitDtos.HabitResponse save(HabitDtos.HabitRequest request) {
         User user = currentUser.require();
+        try {
+            return saveOrUpdate(user, request);
+        } catch (DataIntegrityViolationException ex) {
+            // 并发请求同时通过“不存在”检查时，唯一约束会兜底：重查一次后按更新处理
+            return saveOrUpdate(user, request);
+        }
+    }
+
+    private HabitDtos.HabitResponse saveOrUpdate(User user, HabitDtos.HabitRequest request) {
         HabitRecord record = records.findByUserAndRecordDate(user, request.recordDate()).orElse(null);
         if (record == null) {
             record = new HabitRecord(user, request.recordDate(), request.dietScore(), request.note());

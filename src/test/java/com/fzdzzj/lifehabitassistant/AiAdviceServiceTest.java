@@ -3,13 +3,16 @@ package com.fzdzzj.lifehabitassistant;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fzdzzj.lifehabitassistant.pojo.*;
 import com.fzdzzj.lifehabitassistant.server.dao.AiAdviceHistoryRepository;
+import com.fzdzzj.lifehabitassistant.server.dao.AiQuotaUsageRepository;
 import com.fzdzzj.lifehabitassistant.server.service.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -27,6 +30,7 @@ class AiAdviceServiceTest {
 
     private HabitService habits;
     private AiAdviceHistoryRepository history;
+    private AiQuotaUsageRepository quota;
     private OpenAiChatClient chatClient;
     private CurrentUser currentUser;
     private User user;
@@ -36,13 +40,15 @@ class AiAdviceServiceTest {
     void setUp() {
         habits = mock(HabitService.class);
         history = mock(AiAdviceHistoryRepository.class);
+        quota = mock(AiQuotaUsageRepository.class);
         chatClient = mock(OpenAiChatClient.class);
         currentUser = mock(CurrentUser.class);
         user = mock(User.class);
         when(user.getId()).thenReturn(42L);
         when(currentUser.require()).thenReturn(user);
-        when(history.countByUserIdAndCallCountedTrueAndCreatedAtBetween(any(), any(), any())).thenReturn(0L);
         when(history.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(quota.incrementIfBelowLimit(any(), any(), any(), anyInt(), any())).thenReturn(1);
+        when(quota.findUsedCount(any(), any(), any())).thenReturn(Optional.empty());
         service = service(enabled(true, 3, 30));
     }
 
@@ -55,6 +61,7 @@ class AiAdviceServiceTest {
 
         assertEquals(AdviceSource.RULE_FALLBACK, response.source());
         verifyNoInteractions(chatClient);
+        verify(quota, never()).incrementIfBelowLimit(any(), any(), any(), anyInt(), any());
         AiAdviceHistory saved = savedHistory();
         assertEquals(AdviceSource.RULE_FALLBACK, saved.getSource());
         assertFalse(saved.isCallCounted());
@@ -69,12 +76,14 @@ class AiAdviceServiceTest {
 
         assertEquals(AdviceSource.RULE_FALLBACK, response.source());
         verifyNoInteractions(chatClient);
+        verify(quota, never()).incrementIfBelowLimit(any(), any(), any(), anyInt(), any());
     }
 
     @Test
     void successfulCallShouldReturnAiContentAndCountQuota() {
         givenOneRecord();
         when(chatClient.chat(any(), any())).thenReturn(AI_JSON);
+        quotaUsed(1);
 
         AiAdviceDtos.AiAdviceResponse response = service.analysis(7);
 
@@ -95,6 +104,7 @@ class AiAdviceServiceTest {
     void providerFailureShouldFallBackAndCountTheAttempt() {
         givenOneRecord();
         when(chatClient.chat(any(), any())).thenThrow(new IllegalStateException("provider timeout"));
+        quotaUsed(1);
 
         AiAdviceDtos.AiAdviceResponse response = service.analysis(7);
 
@@ -108,12 +118,11 @@ class AiAdviceServiceTest {
     @Test
     void dailyQuotaExhaustedShouldFallBackWithoutCallingProvider() {
         givenOneRecord();
-        when(history.countByUserIdAndCallCountedTrueAndCreatedAtBetween(any(), any(), any())).thenReturn(3L);
+        when(quota.incrementIfBelowLimit(any(), eq("DAY"), any(), anyInt(), any())).thenReturn(0);
 
         AiAdviceDtos.AiAdviceResponse response = service.analysis(7);
 
         assertEquals(AdviceSource.RULE_FALLBACK, response.source());
-        assertEquals(3, response.dailyUsed());
         assertEquals(3, response.dailyLimit());
         verifyNoInteractions(chatClient);
         assertFalse(savedHistory().isCallCounted());
@@ -122,12 +131,13 @@ class AiAdviceServiceTest {
     @Test
     void monthlyQuotaExhaustedShouldFallBackWithoutCallingProvider() {
         givenOneRecord();
-        when(history.countByUserIdAndCallCountedTrueAndCreatedAtBetween(any(), any(), any())).thenReturn(30L);
+        when(quota.incrementIfBelowLimit(any(), eq("DAY"), any(), anyInt(), any())).thenReturn(1);
+        when(quota.incrementIfBelowLimit(any(), eq("MONTH"), any(), anyInt(), any())).thenReturn(0);
 
         AiAdviceDtos.AiAdviceResponse response = service.analysis(7);
 
         assertEquals(AdviceSource.RULE_FALLBACK, response.source());
-        assertEquals(30, response.monthlyUsed());
+        assertEquals(30, response.monthlyLimit());
         verifyNoInteractions(chatClient);
     }
 
@@ -139,8 +149,7 @@ class AiAdviceServiceTest {
         service.analysis(7);
 
         ArgumentCaptor<Long> userId = ArgumentCaptor.forClass(Long.class);
-        verify(history, atLeastOnce()).countByUserIdAndCallCountedTrueAndCreatedAtBetween(
-                userId.capture(), any(), any());
+        verify(quota, atLeastOnce()).incrementIfBelowLimit(userId.capture(), any(), any(), anyInt(), any());
         assertEquals(List.of(42L), userId.getAllValues().stream().distinct().toList());
         ArgumentCaptor<AiAdviceHistory> saved = ArgumentCaptor.forClass(AiAdviceHistory.class);
         verify(history).save(saved.capture());
@@ -165,8 +174,16 @@ class AiAdviceServiceTest {
         return new AiAdviceService(habits,
                 new HealthStatisticsService(thresholds, TestDrinkRules.defaults()),
                 new RuleBasedAdviceGenerator(thresholds, TestDrinkRules.defaults()),
-                history, properties, chatClient, new AiAdviceContentParser(new ObjectMapper()),
+                history, quota, properties, chatClient, new AiAdviceContentParser(new ObjectMapper()),
                 new ObjectMapper(), currentUser);
+    }
+
+    private void quotaUsed(int used) {
+        LocalDateTime now = LocalDateTime.now();
+        when(quota.findUsedCount(eq(42L), eq("DAY"), eq(now.toLocalDate().toString())))
+                .thenReturn(Optional.of(used));
+        when(quota.findUsedCount(eq(42L), eq("MONTH"), eq(java.time.YearMonth.now().toString())))
+                .thenReturn(Optional.of(used));
     }
 
     private AiAdviceProperties enabled(boolean enabled, int dailyLimit, int monthlyLimit) {

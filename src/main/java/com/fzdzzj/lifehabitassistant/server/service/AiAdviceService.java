@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fzdzzj.lifehabitassistant.pojo.*;
 import com.fzdzzj.lifehabitassistant.server.dao.AiAdviceHistoryRepository;
+import com.fzdzzj.lifehabitassistant.server.dao.AiQuotaUsageRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -50,6 +52,7 @@ public class AiAdviceService {
     private final HealthStatisticsService statistics;
     private final RuleBasedAdviceGenerator ruleAdvice;
     private final AiAdviceHistoryRepository historyRepository;
+    private final AiQuotaUsageRepository quotaRepository;
     private final AiAdviceProperties properties;
     private final OpenAiChatClient chatClient;
     private final AiAdviceContentParser contentParser;
@@ -58,12 +61,14 @@ public class AiAdviceService {
 
     public AiAdviceService(HabitService habits, HealthStatisticsService statistics,
                            RuleBasedAdviceGenerator ruleAdvice, AiAdviceHistoryRepository historyRepository,
-                           AiAdviceProperties properties, OpenAiChatClient chatClient,
+                           AiQuotaUsageRepository quotaRepository, AiAdviceProperties properties,
+                           OpenAiChatClient chatClient,
                            AiAdviceContentParser contentParser, ObjectMapper objectMapper, CurrentUser currentUser) {
         this.habits = habits;
         this.statistics = statistics;
         this.ruleAdvice = ruleAdvice;
         this.historyRepository = historyRepository;
+        this.quotaRepository = quotaRepository;
         this.properties = properties;
         this.chatClient = chatClient;
         this.contentParser = contentParser;
@@ -102,46 +107,83 @@ public class AiAdviceService {
     private AiAdviceDtos.AiAdviceResponse generate(User user, AiAdviceType type, LocalDate start, LocalDate end,
                                                    int days, HealthStatistics summary) {
         AnalysisDtos.AnalysisResponse rule = ruleAdvice.generate(days, summary);
-        Quota quota = quota(user);
-        boolean eligible = summary.recordCount() > 0 && properties.enabled()
-                && notBlank(properties.apiKey()) && notBlank(properties.model())
-                && quota.dailyUsed < properties.dailyLimit() && quota.monthlyUsed < properties.monthlyLimit();
-        if (!eligible) {
+        if (!eligible(properties, summary)) {
             return persistAndRespond(user, type, start, end, AdviceSource.RULE_FALLBACK, toContent(rule),
-                    null, false, quota);
+                    null, false);
+        }
+        try {
+            occupyQuota(user);
+        } catch (QuotaExceededException ex) {
+            return persistAndRespond(user, type, start, end, AdviceSource.RULE_FALLBACK, toContent(rule),
+                    null, false);
         }
         try {
             String raw = chatClient.chat(SYSTEM_PROMPT, userPrompt(days, summary, rule));
             AiAdviceDtos.AiAdviceContent content = contentParser.parse(raw);
             return persistAndRespond(user, type, start, end, AdviceSource.AI, content,
-                    properties.model(), true, quota);
+                    properties.model(), true);
         } catch (RuntimeException ex) {
             log.warn("OpenAI advice failed for user {}: {}", user.getId(), ex.toString());
             return persistAndRespond(user, type, start, end, AdviceSource.RULE_FALLBACK, toContent(rule),
-                    properties.model(), true, quota);
+                    properties.model(), true);
         }
     }
 
     private AiAdviceDtos.AiAdviceResponse persistAndRespond(User user, AiAdviceType type, LocalDate start,
                                                             LocalDate end, AdviceSource source,
                                                             AiAdviceDtos.AiAdviceContent content, String modelName,
-                                                            boolean callCounted, Quota quota) {
+                                                            boolean callCounted) {
         AiAdviceHistory saved = historyRepository.save(new AiAdviceHistory(user, type, start, end, source, modelName,
                 properties.promptVersion(), toJson(content), callCounted));
-        int dailyUsed = callCounted ? quota.dailyUsed + 1 : quota.dailyUsed;
-        int monthlyUsed = callCounted ? quota.monthlyUsed + 1 : quota.monthlyUsed;
+        Quota quota = usage(user);
         return new AiAdviceDtos.AiAdviceResponse(source, content, saved.getId(), saved.getCreatedAt(),
-                dailyUsed, properties.dailyLimit(), monthlyUsed, properties.monthlyLimit());
+                quota.dailyUsed, properties.dailyLimit(), quota.monthlyUsed, properties.monthlyLimit());
     }
 
-    private Quota quota(User user) {
+    private boolean eligible(AiAdviceProperties properties, HealthStatistics summary) {
+        return summary.recordCount() > 0 && properties.enabled()
+                && notBlank(properties.apiKey()) && notBlank(properties.model());
+    }
+
+    /**
+     * Atomically reserve quota for one day and one month inside the current transaction.
+     * Either both succeed or the transaction rolls back both increments.
+     */
+    private void occupyQuota(User user) {
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime dayStart = now.toLocalDate().atStartOfDay();
-        LocalDateTime monthStart = now.toLocalDate().withDayOfMonth(1).atStartOfDay();
-        int dailyUsed = Math.toIntExact(historyRepository.countByUserIdAndCallCountedTrueAndCreatedAtBetween(
-                user.getId(), dayStart, now));
-        int monthlyUsed = Math.toIntExact(historyRepository.countByUserIdAndCallCountedTrueAndCreatedAtBetween(
-                user.getId(), monthStart, now));
+        String dayKey = now.toLocalDate().toString();
+        String monthKey = YearMonth.now().toString();
+        ensureRow(user, AiQuotaPeriod.DAY, dayKey, now);
+        if (quotaRepository.incrementIfBelowLimit(user.getId(), AiQuotaPeriod.DAY.name(), dayKey,
+                properties.dailyLimit(), now) != 1) {
+            throw new QuotaExceededException("daily quota exhausted");
+        }
+        ensureRow(user, AiQuotaPeriod.MONTH, monthKey, now);
+        if (quotaRepository.incrementIfBelowLimit(user.getId(), AiQuotaPeriod.MONTH.name(), monthKey,
+                properties.monthlyLimit(), now) != 1) {
+            throw new QuotaExceededException("monthly quota exhausted");
+        }
+    }
+
+    private void ensureRow(User user, AiQuotaPeriod period, String key, LocalDateTime now) {
+        if (quotaRepository.findByUserIdAndPeriodTypeAndPeriodKey(user.getId(), period, key).isPresent()) {
+            return;
+        }
+        try {
+            quotaRepository.saveAndFlush(new AiQuotaUsage(user, period, key, now));
+        } catch (DataIntegrityViolationException ignored) {
+            // 并发请求已创建同一行：继续执行，由下面的原子 UPDATE 负责扣减
+        }
+    }
+
+    private Quota usage(User user) {
+        LocalDateTime now = LocalDateTime.now();
+        int dailyUsed = quotaRepository.findUsedCount(
+                        user.getId(), AiQuotaPeriod.DAY.name(), now.toLocalDate().toString())
+                .orElse(0);
+        int monthlyUsed = quotaRepository.findUsedCount(
+                        user.getId(), AiQuotaPeriod.MONTH.name(), YearMonth.now().toString())
+                .orElse(0);
         return new Quota(dailyUsed, monthlyUsed);
     }
 
@@ -185,5 +227,11 @@ public class AiAdviceService {
     }
 
     private record Quota(int dailyUsed, int monthlyUsed) {
+    }
+
+    private static final class QuotaExceededException extends RuntimeException {
+        QuotaExceededException(String message) {
+            super(message);
+        }
     }
 }
