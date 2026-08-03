@@ -24,7 +24,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * not just H2 in MySQL-compatibility mode. Skipped automatically when Docker
  * is unavailable; CI runs on GitHub-hosted runners where Docker is present.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
+// MOCK keeps the servlet context (SecurityConfig needs HttpSecurity); no real
+// server is started, and the datasource is redirected to the MySQL container.
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.jpa.hibernate.ddl-auto=none"
 })
 @Testcontainers(disabledWithoutDocker = true)
