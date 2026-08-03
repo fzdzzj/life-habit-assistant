@@ -11,9 +11,19 @@
 3. AI 配额成为硬约束（独立配额表 + 行级原子扣减，并发不超卖）。
 4. 合并前自动验证（GitHub Actions CI）。
 
+P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）。
+
 对应 Issue #44、分支 `codex/44-reliability-hardening`、PR #45。
 
 ## 二、本轮已完成（Issue #44 / PR #45）
+
+### 注册/登录限流（Issue #46 / PR #47）
+
+| 优化项 | 问题 | 方案 | 落点 | 验证 |
+| --- | --- | --- | --- | --- |
+| 注册/登录限流 | `/api/auth/**` 公开且无速率限制，可批量注册、暴力撞库 | 内存滑动窗口按 IP 限频（注册 5 次/分钟、登录 20 次/分钟）；同一 IP+用户名连续失败 5 次锁定 15 分钟，登录成功清零；新错误码 42900（HTTP 429）统一返回 | [AuthRateLimiter.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/AuthRateLimiter.java)、[ClientIpResolver.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/ClientIpResolver.java)、[AuthService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AuthService.java)、[ErrorCode.java](../src/main/java/com/fzdzzj/lifehabitassistant/common/ErrorCode.java) | `AuthRateLimiterTest` 8 项（窗口、锁定、解锁、隔离）；`AuthRateLimitHttpIntegrationTest` 3 项（注册 429、失败锁定、正常登录不受影响） |
+
+### 正确性收口（Issue #44 / PR #45）
 
 | 优化项 | 问题 | 方案 | 落点 | 验证 |
 | --- | --- | --- | --- | --- |
@@ -29,14 +39,15 @@
 - **为什么不用 `ON DUPLICATE KEY UPDATE`**：H2 的 MySQL 兼容模式不支持该语法，测试必挂；改用 JPA 实体占位 + 唯一约束兜底（并发冲突重查），只把两库都支持的通用 `UPDATE ... WHERE` 写成 native。
 - **为什么读取配额用原生标量查询**：原生 SQL 更新后，同一事务内实体查询会命中 Hibernate 一级缓存，读到旧值；标量查询直读数据库。
 - **并发重试为什么只一次**：冲突窗口极小，重试一次即可；极端情况下仍冲突按 500 暴露，不无限重试。
+- **为什么用内存限流而不是 Redis**：单实例部署下 `ConcurrentHashMap` 足够，且符合“不引 Redis”的约束；多实例部署时状态不共享，届时再换分布式限流（已记录为已知边界）。
+- **为什么“窗口限频 + 失败锁定”双机制**：窗口限频挡批量爆破（一个 IP 短时间大量尝试），失败锁定挡同一账号撞库（换 IP 也要撞开锁定的账号）；两者互补。
+- **为什么限流返回 429 而不是 401**：被限流意味着“请求不被处理”，用 429 语义更准确；也避免攻击者通过“失败到底返回 401 还是 429”判断账号是否存在。
 
 ## 四、待办优化（供下一步选择，按优先级）
 
-### P0（安全，未做）
+### P0（安全）
 
-| 优化项 | 现状 | 方案 | 验收标准 |
-| --- | --- | --- | --- |
-| 注册/登录限流 | `/api/auth/**` 公开，无速率限制 | 内存限流（IP+用户名、登录失败计数）或部署层限流 | 连续失败被拒绝；限流不影响正常登录 |
+- 注册/登录限流：已完成（Issue #46 / PR #47，见二）。
 
 ### P1（工程与运维）
 
@@ -68,7 +79,8 @@
 
 ## 六、本轮验收标准
 
-- [x] `mvn test`：54 个测试全部通过（新增配额原子性、并发重试、异常兜底测试）。
+- [x] `mvn test`：69 个测试全部通过（新增配额原子性、并发重试、异常兜底、限流窗口、失败锁定、429 集成测试）。
+- [x] 注册/登录限流：连续失败被 429 拒绝；正常登录不受影响（HTTP 集成测试覆盖）。
 - [x] PR #45 的 GitHub Actions CI 通过。
 - [x] Flyway V6 建表（H2 已验证 SQL 语义；真实 MySQL 冒烟列入 P1）。
 - [ ] 本地 MySQL 冒烟：启动应用 → 注册登录 → 录数据 → 趋势/报告 → 导出 → AI 降级路径可走通（需要 `.env` 配置）。
