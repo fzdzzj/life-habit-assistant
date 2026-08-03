@@ -32,6 +32,12 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 | AI 配额硬约束 | 历史表计数是“先查后调”，并发可超卖；且无法区分失败尝试与未尝试降级 | 独立 `ai_quota_usage` 表，`UPDATE ... WHERE used_count < limit` 原子扣减，先扣后调，事务回滚保证日/月两行一致 | [AiQuotaUsageRepository.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/dao/AiQuotaUsageRepository.java)、[AiAdviceService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AiAdviceService.java)、V6 迁移 | `AiQuotaUsageRepositoryTest`（唯一约束、原子扣减到上限、日/月独立计数） |
 | CI | `.github/workflows` 是空目录，PR 合并无自动验证 | JDK 21 + Maven 缓存 + `mvn -B test`，push/PR 触发 | [ci.yml](../.github/workflows/ci.yml) | PR #45 的 CI 检查通过 |
 
+### 健康检查与请求日志（Issue #50）
+
+| 优化项 | 问题 | 方案 | 落点 | 验证 |
+| --- | --- | --- | --- | --- |
+| 健康检查与请求日志 | 无 actuator、无 requestId，生产无法快速探活，日志无法串起单次请求 | `spring-boot-starter-actuator`，只暴露 `/actuator/health`；`RequestIdFilter` 优先沿用 `X-Request-Id` 否则生成 UUID，写入 MDC 并回写响应头，记录请求开始/结束与耗时；日志格式增加 `%X{requestId}` | [RequestIdFilter.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/RequestIdFilter.java)、[RequestIdConfig.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/RequestIdConfig.java)、[SecurityConfig.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/SecurityConfig.java) | `RequestIdAndHealthHttpIntegrationTest` 4 项：health 公开可用、请求头透传且日志可检索、无头自动生成、不跨请求泄漏 |
+
 ## 三、关键取舍（防止“换个思路做坏”的约束）
 
 - **配额为什么用独立表而不是历史表计数**：历史表无法区分“调用失败（应计费）”和“未调用降级（不应计费）”；独立表只记录已发起的模型请求，语义干净。
@@ -53,7 +59,6 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 
 | 优化项 | 现状 | 方案 | 验收标准 |
 | --- | --- | --- | --- |
-| 健康检查与请求日志 | 无 actuator、无 requestId | `spring-boot-starter-actuator`（prod 只暴露 health）+ 请求日志 MDC | `/actuator/health` 可用；日志可串起单次请求 |
 | 真实 MySQL 迁移验证 | 测试用 H2，Flyway SQL 只在本地 MySQL 跑过 | Testcontainers MySQL 或本地冒烟 profile | V1–V6 在空库可完整执行两次 |
 | AI 提示词文件化 | 系统提示词是 Java 常量 | 移到 `resources/prompts/*.txt`，版本随文件 | 改提示词不重新编译 |
 | 深分页 | `PageRequest.of(page, size)` 深页码全表扫描 | 游标分页或维持页码上限 | 深页码查询耗时可控 |
