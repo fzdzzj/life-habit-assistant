@@ -25,16 +25,18 @@ public class ReportService {
     private final AiAdviceHistoryRepository history;
     private final AiAdviceContentParser contentParser;
     private final CurrentUser currentUser;
+    private final GoalService goals;
 
     public ReportService(HabitService habits, HealthStatisticsService statistics, AdviceGenerator advice,
                          AiAdviceHistoryRepository history, AiAdviceContentParser contentParser,
-                         CurrentUser currentUser) {
+                         CurrentUser currentUser, GoalService goals) {
         this.habits = habits;
         this.statistics = statistics;
         this.advice = advice;
         this.history = history;
         this.contentParser = contentParser;
         this.currentUser = currentUser;
+        this.goals = goals;
     }
 
     @Transactional(readOnly = true)
@@ -50,9 +52,10 @@ public class ReportService {
 
     private ReportDtos.ReportResponse build(String type, LocalDate start, LocalDate end) {
         List<HabitRecord> records = habits.range(start, end);
-        HealthStatistics summary = statistics.summarize(records, end);
+        var effectiveGoals = goals.get();
+        HealthStatistics summary = statistics.summarize(records, end, effectiveGoals);
         int days = Math.toIntExact(end.toEpochDay() - start.toEpochDay() + 1L);
-        var analysis = advice.generate(days, summary);
+        var analysis = advice.generate(days, summary, effectiveGoals);
         return new ReportDtos.ReportResponse(type, start, end, summary.recordCount(), summary.averageSleepHours(),
                 summary.averageDietScore(), summary.totalExerciseMinutes(), summary.averageHydrationMl(),
                 summary.totalRiskDrinkVolumeMl(), achievementRate(summary),
@@ -78,7 +81,7 @@ public class ReportService {
     }
 
     private ReportDtos.WeekSummary weekSummary(LocalDate weekStart, List<HabitRecord> records) {
-        HealthStatistics summary = statistics.summarize(records, weekStart.plusDays(6));
+        HealthStatistics summary = statistics.summarize(records, weekStart.plusDays(6), goals.get());
         return new ReportDtos.WeekSummary(weekStart, summary.averageSleepHours(), summary.totalExerciseMinutes(),
                 summary.averageHydrationMl(), summary.totalRiskDrinkVolumeMl());
     }

@@ -1,6 +1,7 @@
 package com.fzdzzj.lifehabitassistant;
 
 import com.fzdzzj.lifehabitassistant.pojo.AnalysisDtos;
+import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.DrinkRecord;
 import com.fzdzzj.lifehabitassistant.pojo.DrinkType;
 import com.fzdzzj.lifehabitassistant.pojo.ExerciseIntensity;
@@ -12,8 +13,8 @@ import com.fzdzzj.lifehabitassistant.pojo.SleepType;
 import com.fzdzzj.lifehabitassistant.pojo.User;
 import com.fzdzzj.lifehabitassistant.server.service.AdviceGenerator;
 import com.fzdzzj.lifehabitassistant.server.service.AnalysisService;
+import com.fzdzzj.lifehabitassistant.server.service.GoalService;
 import com.fzdzzj.lifehabitassistant.server.service.HealthStatisticsService;
-import com.fzdzzj.lifehabitassistant.server.service.HealthThresholds;
 import com.fzdzzj.lifehabitassistant.server.service.HabitService;
 import org.junit.jupiter.api.Test;
 
@@ -31,7 +32,9 @@ class AnalysisServiceTest {
     void trendShouldMapUnifiedDetailedStatisticsAndCountConsecutiveDays() {
         HabitService habits = mock(HabitService.class);
         AdviceGenerator advice = mock(AdviceGenerator.class);
-        HealthThresholds thresholds = new HealthThresholds(420, 540, 1500, 30, 3);
+        GoalService goals = mock(GoalService.class);
+        DailyGoals defaultGoals = new DailyGoals(420, 540, 1500, 30, 3);
+        when(goals.get()).thenReturn(defaultGoals);
         LocalDate today = LocalDate.now();
         User user = new User("demo", "hash");
         HabitRecord yesterday = record(user, today.minusDays(1), SleepType.NIGHT, today.minusDays(2).atTime(23, 0), today.minusDays(1).atTime(7, 0), ExerciseType.WALK, ExerciseIntensity.MEDIUM, 30, 1500);
@@ -40,7 +43,7 @@ class AnalysisServiceTest {
         when(habits.range(any(), any())).thenReturn(List.of(yesterday, current));
 
         AnalysisDtos.TrendResponse response = new AnalysisService(habits, advice,
-                new HealthStatisticsService(thresholds, TestDrinkRules.defaults())).trend(7);
+                new HealthStatisticsService(TestDrinkRules.defaults()), goals).trend(7);
 
         assertEquals(2, response.recordCount());
         assertEquals(8.0, response.averageSleepHours());

@@ -1,6 +1,7 @@
 package com.fzdzzj.lifehabitassistant.server.service;
 
 import com.fzdzzj.lifehabitassistant.pojo.AnalysisDtos;
+import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.HealthStatistics;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,17 +13,20 @@ public class AnalysisService {
     private final HabitService habits;
     private final AdviceGenerator advice;
     private final HealthStatisticsService statistics;
+    private final GoalService goals;
 
-    public AnalysisService(HabitService habits, AdviceGenerator advice, HealthStatisticsService statistics) {
+    public AnalysisService(HabitService habits, AdviceGenerator advice, HealthStatisticsService statistics,
+                           GoalService goals) {
         this.habits = habits;
         this.advice = advice;
         this.statistics = statistics;
+        this.goals = goals;
     }
 
     @Transactional(readOnly = true)
     public AnalysisDtos.TrendResponse trend(int days) {
         LocalDate today = LocalDate.now();
-        HealthStatistics summary = statistics.summarize(records(days, today), today);
+        HealthStatistics summary = statistics.summarize(records(days, today), today, goals.get());
         return new AnalysisDtos.TrendResponse(days, summary.recordCount(), summary.averageSleepHours(),
                 summary.averageDietScore(), summary.totalExerciseMinutes(), summary.averageHydrationMl(),
                 summary.consecutiveDays(), summary.dailyStatistics().stream().map(this::daily).toList());
@@ -31,7 +35,7 @@ public class AnalysisService {
     @Transactional(readOnly = true)
     public AnalysisDtos.AnalysisResponse analysis(int days) {
         LocalDate today = LocalDate.now();
-        return advice.generate(days, statistics.summarize(records(days, today), today));
+        return advice.generate(days, statistics.summarize(records(days, today), today, goals.get()), goals.get());
     }
 
     private java.util.List<com.fzdzzj.lifehabitassistant.pojo.HabitRecord> records(int days, LocalDate end) {
