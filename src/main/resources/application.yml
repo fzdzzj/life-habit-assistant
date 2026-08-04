@@ -5,6 +5,17 @@ spring:
     name: life-habit-assistant
   profiles:
     default: dev
+  ai:
+    model:
+      # The OpenAI adapter is assembled manually from app.ai.advice.* so the
+      # Spring AI auto-configuration must not force an API key at startup.
+      chat: none
+      embedding: none
+      image: none
+      audio:
+        speech: none
+        transcription: none
+      moderation: none
   datasource:
     url: jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: ${DB_USERNAME}

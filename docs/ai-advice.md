@@ -10,11 +10,13 @@
 - 模型只在用户显式调用 `POST /api/ai/...` 时被请求；查看报告、下载导出、查询趋势都不会触发模型。
 - 未启用、未配置密钥/模型、无记录、配额耗尽、超时或供应商异常时，一律返回规则建议（`source=RULE_FALLBACK`）。
 
-## 为什么用轻量 OpenAI 适配层，而不是 spring-ai starter
+## 为什么使用 spring-ai starter（2026-08 已升级）
 
-按 Spring AI 官方版本矩阵，2.0.x 要求 Spring Boot 4.x，1.0.x/1.1.x 要求 Spring Boot 3.4+；当前项目是 Spring Boot 3.3.3，唯一对应的 0.8.x 不在 Maven Central，且其 Spring 官方仓库在当前网络环境返回 401，无法完成构建。
+早期项目固定在 Spring Boot 3.3.3 时，Spring AI 2.0.x 要求 Boot 4.x，1.0.x/1.1.x 要求 Boot 3.4+，兼容版本不在 Maven Central，因此先用 `RestClientOpenAiChatClient` 手写调用 OpenAI Chat Completions，并保留 `OpenAiChatClient` 接口作为替换点。
 
-因此本模块提供 `OpenAiChatClient` 接口 + `RestClientOpenAiChatClient` 实现，只依赖 Spring 自带的 `RestClient` 调用 OpenAI Chat Completions。接口即替换点：未来升级到 Boot 3.4+ 后，可以新增一个基于 `spring-ai-starter-model-openai` 的实现并替换 Bean，服务层和测试无需改变。
+升级到 Spring Boot 3.5.16 + Spring AI 1.1.8 后，手写实现已替换为 `SpringAiOpenAiChatClient`（基于 `ChatClient` / `OpenAiChatModel`），服务层与测试依赖的 `OpenAiChatClient` 接口保持不变。实现由 `AiAdviceConfig` 基于项目自己的 `app.ai.advice.*` 属性手动装配：baseUrl、apiKey、模型、超时与 temperature 全部沿用 `AI_ADVICE_*` 环境变量，不改 `.env` 变量名。
+
+同时把 Spring AI 的模型自动配置全部显式关闭（`spring.ai.model.* = none`）：自动配置在缺少 `spring.ai.openai.api-key` 时会强制校验并导致上下文启动失败，而本项目由 `app.ai.advice.*` 统一管理开关与密钥。未来升级 Spring Boot 4 后可切到 Spring AI 2.0，届时只需调整 Bean 装配或启用对应自动配置。
 
 ## 数据流
 
