@@ -17,6 +17,7 @@ config/   JWT、Spring Security 与演示数据配置
 - 所有普通 JSON 接口返回 `{"code": 1, "message": "success", "data": ...}`；导出接口返回文件流。
 - 密码使用 BCrypt 哈希；JWT 解析后的当前用户决定每一条查询和写入的归属。
 - 同一用户每天只有一条记录（`user_id + record_date` 唯一约束）；重复提交更新原记录。
+- 每日健康目标可按用户自定义（`daily_goals` 表）；未设置时回落到全局阈值，统计达标、规则建议与 AI 提示词统一读取生效目标。
 - 周报、月报按请求即时聚合，不保存冗余报告快照。
 
 ## 启动
@@ -59,6 +60,9 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 | 每日记录 | `GET /api/habits` | 分页和日期范围查询 |
 | 每日记录 | `GET /api/habits/{date}` | 查询单日记录 |
 | 每日记录 | `DELETE /api/habits/{date}` | 删除单日记录 |
+| 每日目标 | `GET /api/goals` | 查询当前用户目标；未设置返回全局默认值 |
+| 每日目标 | `PUT /api/goals` | 新建或更新当前用户目标 |
+| 每日目标 | `DELETE /api/goals` | 重置为全局默认值 |
 | 饮品明细 | `GET/POST /api/habits/{date}/drink-records` | 查询或新增当天饮品明细 |
 | 饮品明细 | `PUT/DELETE /api/habits/{date}/drink-records/{id}` | 修改或删除一条饮品明细 |
 | 趋势 | `GET /api/trends?days=7` | 睡眠、饮食、运动、饮水与连续天数 |
@@ -83,6 +87,22 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 
 `recordDate` 是当天归属日。先创建每日记录，再通过独立接口维护睡眠片段、运动明细和饮品明细。饮品使用 `GET/POST /api/habits/{date}/drink-records`、`PUT/DELETE /api/habits/{date}/drink-records/{id}`；`hydrationMl` 是按饮品类型计算的有效补水，不再把所有饮料简单等同于饮水。详见 [饮品模块设计](docs/drink-records.md)。
 
+### 自定义每日目标
+
+`PUT /api/goals` 请求示例：
+
+```json
+{
+  "minimumSleepMinutes": 480,
+  "maximumSleepMinutes": 600,
+  "minimumHydrationMl": 2000,
+  "minimumExerciseMinutes": 45,
+  "minimumDietScore": 4
+}
+```
+
+目标字段取值：睡眠 180–720 / 360–960 分钟且最小值不得超过最大值、有效补水 500–5000 ml、运动 0–600 分钟、饮食 1–5 分。保存后，每日达标判断、达标率、规则建议（睡眠/饮食/补水/运动风险）和 AI 提示词全部按该用户目标计算；`DELETE /api/goals` 删除后回落全局阈值（`app.health.*`）。
+
 ### OpenAI 个性化建议
 
 AI 建议默认关闭，且只在用户显式调用 `POST /api/ai/...` 时触发；打开报告或下载导出**不会**调用模型，只会读取该周期最近一次已保存的解读。规则统计与风险判定始终由本地规则引擎负责，模型只基于脱敏聚合指标生成自然语言解读，不会收到用户名、账号 ID、备注或原始记录。每次显式请求都会保存历史（AI 或规则降级），周报/月报导出会附加对应周期最近一次已保存内容。
@@ -99,6 +119,7 @@ AI 建议默认关闭，且只在用户显式调用 `POST /api/ai/...` 时触发
 - 记录：跨午夜睡眠、同日更新且归属当前用户。
 - 分析：均值、总运动、连续记录、阈值达标。
 - 报告：自然周、闰年月边界、Excel 工作表和 PDF 可打开性。
+- 每日目标：默认回落全局阈值、新建/更新同一行、重置、参数校验、用户隔离，以及自定义目标改变趋势达标与规则建议。
 - AI 建议：解析容错、禁用/无数据/供应商失败/日额度/月额度的降级、按用户计费与隔离、报告导出只读取已保存建议。
 - 正确性：并发重复提交的唯一约束重试、AI 配额表行级原子扣减与额度上限、异常兜底日志。
 

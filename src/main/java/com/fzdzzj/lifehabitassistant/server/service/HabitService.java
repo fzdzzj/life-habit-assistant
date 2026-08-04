@@ -2,6 +2,7 @@ package com.fzdzzj.lifehabitassistant.server.service;
 
 import com.fzdzzj.lifehabitassistant.common.ApiException;
 import com.fzdzzj.lifehabitassistant.config.PaginationProperties;
+import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.HabitDtos;
 import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
 import com.fzdzzj.lifehabitassistant.pojo.PageResponse;
@@ -24,13 +25,15 @@ public class HabitService {
     private final CurrentUser currentUser;
     private final DrinkHealthRules drinkRules;
     private final PaginationProperties pagination;
+    private final GoalService goals;
 
     public HabitService(HabitRecordRepository records, CurrentUser currentUser, DrinkHealthRules drinkRules,
-                        PaginationProperties pagination) {
+                        PaginationProperties pagination, GoalService goals) {
         this.records = records;
         this.currentUser = currentUser;
         this.drinkRules = drinkRules;
         this.pagination = pagination;
+        this.goals = goals;
     }
 
     @Transactional
@@ -51,7 +54,7 @@ public class HabitService {
         } else {
             record.update(request.dietScore(), request.note());
         }
-        return toResponse(records.save(record));
+        return toResponse(user, records.save(record));
     }
 
     @Transactional(readOnly = true)
@@ -69,13 +72,16 @@ public class HabitService {
             throw new IllegalArgumentException("页码过深（offset 不得超过 " + pagination.maxOffset()
                     + "），请缩小日期范围或调整 start 参数");
         }
-        Page<HabitDtos.HabitResponse> result = records.findByUserAndRecordDateBetween(user, safeStart, safeEnd, PageRequest.of(page, size, Sort.by("recordDate").descending())).map(this::toResponse);
+        Page<HabitDtos.HabitResponse> result = records.findByUserAndRecordDateBetween(user, safeStart, safeEnd, PageRequest.of(page, size, Sort.by("recordDate").descending()))
+                .map(record -> toResponse(user, record));
         return PageResponse.from(result);
     }
 
     @Transactional(readOnly = true)
     public HabitDtos.HabitResponse get(LocalDate date) {
-        return records.findByUserAndRecordDate(currentUser.require(), date).map(this::toResponse).orElseThrow(() -> ApiException.notFound("当天记录不存在"));
+        User user = currentUser.require();
+        return records.findByUserAndRecordDate(user, date).map(record -> toResponse(user, record))
+                .orElseThrow(() -> ApiException.notFound("当天记录不存在"));
     }
 
     @Transactional
@@ -89,21 +95,22 @@ public class HabitService {
         return records.findByUserAndRecordDateBetweenOrderByRecordDateAsc(currentUser.require(), start, end);
     }
 
-    public HabitDtos.HabitResponse toResponse(HabitRecord r) {
+    public HabitDtos.HabitResponse toResponse(User user, HabitRecord r) {
         long minutes = r.sleepMinutes();
         int hydrationMl = drinkRules.hydrationMl(r);
+        DailyGoals goals = this.goals.effective(user);
         return new HabitDtos.HabitResponse(r.getRecordDate(), minutes, Math.round(minutes / 6.0) / 10.0,
                 r.getDietScore(), r.exerciseMinutes(), r.moderateEquivalentExerciseMinutes(), hydrationMl,
-                drinkRules.riskDrinkVolumeMl(r), r.getNote(), dailyEvaluation(r, hydrationMl));
+                drinkRules.riskDrinkVolumeMl(r), r.getNote(), dailyEvaluation(r, hydrationMl, goals));
     }
 
-    private String dailyEvaluation(HabitRecord r, int hydrationMl) {
+    private String dailyEvaluation(HabitRecord r, int hydrationMl, DailyGoals goals) {
         int pass = 0;
         long sleep = r.sleepMinutes();
-        if (sleep >= 420 && sleep <= 540) pass++;
-        if (r.getDietScore() >= 3) pass++;
-        if (r.moderateEquivalentExerciseMinutes() >= 30) pass++;
-        if (hydrationMl >= 1500) pass++;
+        if (sleep >= goals.minimumSleepMinutes() && sleep <= goals.maximumSleepMinutes()) pass++;
+        if (r.getDietScore() >= goals.minimumDietScore()) pass++;
+        if (r.moderateEquivalentExerciseMinutes() >= goals.minimumExerciseMinutes()) pass++;
+        if (hydrationMl >= goals.minimumHydrationMl()) pass++;
         return pass >= 4 ? "状态良好" : pass >= 2 ? "可继续改善" : "需要重点关注";
     }
 }

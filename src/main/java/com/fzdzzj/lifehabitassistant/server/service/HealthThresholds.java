@@ -1,10 +1,14 @@
 package com.fzdzzj.lifehabitassistant.server.service;
 
-import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
+import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-/** Centralizes the configurable thresholds used by trend and advice features. */
+/**
+ * Centralizes the configurable global default thresholds. Custom per-user goals
+ * (daily_goals) override these; every consumer reads effective goals instead of
+ * reaching into this component directly.
+ */
 @Component
 public class HealthThresholds {
     private final int minimumSleepMinutes;
@@ -26,35 +30,8 @@ public class HealthThresholds {
         this.minimumDietScore = minimumDietScore;
     }
 
-    public boolean isAchieved(HabitRecord record, int hydrationMl) {
-        return isAchieved(record.sleepMinutes(), record.getDietScore(), record.moderateEquivalentExerciseMinutes(), hydrationMl);
-    }
-
-    public boolean isAchieved(long sleepMinutes, int dietScore, int moderateEquivalentExerciseMinutes, int hydrationMl) {
-        return sleepMinutes >= minimumSleepMinutes
-                && sleepMinutes <= maximumSleepMinutes
-                && dietScore >= minimumDietScore
-                && moderateEquivalentExerciseMinutes >= minimumExerciseMinutes
-                && hydrationMl >= minimumHydrationMl;
-    }
-
-    public int minimumSleepMinutes() {
-        return minimumSleepMinutes;
-    }
-
-    public int maximumSleepMinutes() {
-        return maximumSleepMinutes;
-    }
-
-    public int minimumHydrationMl() {
-        return minimumHydrationMl;
-    }
-
-    public int minimumExerciseMinutes() {
-        return minimumExerciseMinutes;
-    }
-
-    public int minimumDietScore() {
-        return minimumDietScore;
+    public DailyGoals toGoals() {
+        return new DailyGoals(minimumSleepMinutes, maximumSleepMinutes, minimumHydrationMl,
+                minimumExerciseMinutes, minimumDietScore);
     }
 }

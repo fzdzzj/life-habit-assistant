@@ -33,6 +33,7 @@ class AiAdviceServiceTest {
     private AiQuotaUsageRepository quota;
     private OpenAiChatClient chatClient;
     private CurrentUser currentUser;
+    private GoalService goals;
     private User user;
     private AiAdviceService service;
 
@@ -43,6 +44,8 @@ class AiAdviceServiceTest {
         quota = mock(AiQuotaUsageRepository.class);
         chatClient = mock(OpenAiChatClient.class);
         currentUser = mock(CurrentUser.class);
+        goals = mock(GoalService.class);
+        when(goals.get()).thenReturn(new DailyGoals(420, 540, 1500, 30, 3));
         user = mock(User.class);
         when(user.getId()).thenReturn(42L);
         when(currentUser.require()).thenReturn(user);
@@ -170,13 +173,12 @@ class AiAdviceServiceTest {
     }
 
     private AiAdviceService service(AiAdviceProperties properties) {
-        HealthThresholds thresholds = new HealthThresholds(420, 540, 1500, 30, 3);
         return new AiAdviceService(habits,
-                new HealthStatisticsService(thresholds, TestDrinkRules.defaults()),
-                new RuleBasedAdviceGenerator(thresholds, TestDrinkRules.defaults()),
+                new HealthStatisticsService(TestDrinkRules.defaults()),
+                new RuleBasedAdviceGenerator(TestDrinkRules.defaults()),
                 history, quota, properties, new AiSystemPromptLoader(properties),
                 chatClient, new AiAdviceContentParser(new ObjectMapper()),
-                new ObjectMapper(), currentUser);
+                new ObjectMapper(), currentUser, goals);
     }
 
     private void quotaUsed(int used) {

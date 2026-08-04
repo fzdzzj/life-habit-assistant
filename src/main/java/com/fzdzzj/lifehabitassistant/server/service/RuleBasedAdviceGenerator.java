@@ -1,6 +1,7 @@
 package com.fzdzzj.lifehabitassistant.server.service;
 
 import com.fzdzzj.lifehabitassistant.pojo.AnalysisDtos;
+import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.HealthStatistics;
 import org.springframework.stereotype.Component;
 
@@ -9,16 +10,14 @@ import java.util.List;
 
 @Component
 public class RuleBasedAdviceGenerator implements AdviceGenerator {
-    private final HealthThresholds thresholds;
     private final DrinkHealthRules drinkRules;
 
-    public RuleBasedAdviceGenerator(HealthThresholds thresholds, DrinkHealthRules drinkRules) {
-        this.thresholds = thresholds;
+    public RuleBasedAdviceGenerator(DrinkHealthRules drinkRules) {
         this.drinkRules = drinkRules;
     }
 
     @Override
-    public AnalysisDtos.AnalysisResponse generate(int days, HealthStatistics statistics) {
+    public AnalysisDtos.AnalysisResponse generate(int days, HealthStatistics statistics, DailyGoals goals) {
         if (statistics.recordCount() == 0) {
             return new AnalysisDtos.AnalysisResponse(days, 0, "当前周期没有记录，暂时无法形成趋势。",
                     List.of("缺少连续数据"), List.of("请连续记录至少 7 天，再查看个性化建议。"));
@@ -29,31 +28,33 @@ public class RuleBasedAdviceGenerator implements AdviceGenerator {
         double exercise = statistics.totalExerciseMinutes() / (double) statistics.recordCount();
         int moderateEquivalentMinutes = statistics.totalModerateEquivalentExerciseMinutes();
         int strengthTrainingCount = statistics.strengthTrainingCount();
+        double minimumSleepHours = goals.minimumSleepMinutes() / 60d;
+        double maximumSleepHours = goals.maximumSleepMinutes() / 60d;
         List<String> risks = new ArrayList<>();
         List<String> suggestions = new ArrayList<>();
 
-        if (sleep < 7) {
-            risks.add("平均睡眠不足 7 小时");
+        if (sleep < minimumSleepHours) {
+            risks.add("平均睡眠不足 " + hours(minimumSleepHours) + " 小时");
             suggestions.add("尝试固定就寝时间，并提前 30 分钟减少屏幕使用。");
-        } else if (sleep > 9) {
-            risks.add("平均睡眠超过 9 小时");
+        } else if (sleep > maximumSleepHours) {
+            risks.add("平均睡眠超过 " + hours(maximumSleepHours) + " 小时");
             suggestions.add("关注白天精神状态，逐步固定起床时间。");
         }
-        if (diet < thresholds.minimumDietScore()) {
+        if (diet < goals.minimumDietScore()) {
             risks.add("饮食评分偏低");
             suggestions.add("优先保证规律三餐和蔬菜、蛋白质摄入。");
         }
-        if (hydration < thresholds.minimumHydrationMl()) {
+        if (hydration < goals.minimumHydrationMl()) {
             risks.add("平均有效补水量不足");
-            suggestions.add("优先补充白水或无糖饮品，目标每天至少 " + thresholds.minimumHydrationMl() + " ml 有效补水。");
+            suggestions.add("优先补充白水或无糖饮品，目标每天至少 " + goals.minimumHydrationMl() + " ml 有效补水。");
         }
         for (String drinkRisk : drinkRules.riskMessages(statistics.drinkVolumesByType())) {
             risks.add(drinkRisk);
             suggestions.add("减少对应风险饮品，以白水、无糖茶等替代，避免把饮料等同于有效补水。");
         }
-        if (exercise < thresholds.minimumExerciseMinutes()) {
+        if (exercise < goals.minimumExerciseMinutes()) {
             risks.add("日均运动不足");
-            suggestions.add("从每天 " + thresholds.minimumExerciseMinutes() + " 分钟步行或轻运动开始。");
+            suggestions.add("从每天 " + goals.minimumExerciseMinutes() + " 分钟步行或轻运动开始。");
         }
         if (days >= 7 && moderateEquivalentMinutes < 150 * days / 7d) {
             risks.add("中等强度运动当量未达到每周 150 分钟");
@@ -69,5 +70,9 @@ public class RuleBasedAdviceGenerator implements AdviceGenerator {
         return new AnalysisDtos.AnalysisResponse(days, statistics.recordCount(),
                 String.format("已分析 %d 条记录：平均睡眠 %.1f 小时、饮食 %.1f 分、日均运动 %.0f 分钟。",
                         statistics.recordCount(), sleep, diet, exercise), risks, suggestions);
+    }
+
+    private String hours(double hours) {
+        return hours == Math.floor(hours) ? String.valueOf((int) hours) : String.format("%.1f", hours);
     }
 }

@@ -2,6 +2,7 @@ package com.fzdzzj.lifehabitassistant.server.service;
 
 import com.fzdzzj.lifehabitassistant.pojo.DrinkRecord;
 import com.fzdzzj.lifehabitassistant.pojo.DrinkType;
+import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.ExerciseSession;
 import com.fzdzzj.lifehabitassistant.pojo.ExerciseType;
 import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
@@ -23,18 +24,16 @@ import java.util.Set;
  */
 @Service
 public class HealthStatisticsService {
-    private final HealthThresholds thresholds;
     private final DrinkHealthRules drinkRules;
 
-    public HealthStatisticsService(HealthThresholds thresholds, DrinkHealthRules drinkRules) {
-        this.thresholds = thresholds;
+    public HealthStatisticsService(DrinkHealthRules drinkRules) {
         this.drinkRules = drinkRules;
     }
 
-    public HealthStatistics summarize(List<HabitRecord> records, LocalDate consecutiveAnchor) {
+    public HealthStatistics summarize(List<HabitRecord> records, LocalDate consecutiveAnchor, DailyGoals goals) {
         List<HealthStatistics.DailyStatistics> dailyStatistics = records.stream()
                 .sorted(java.util.Comparator.comparing(HabitRecord::getRecordDate))
-                .map(this::daily)
+                .map(record -> daily(record, goals))
                 .toList();
         return new HealthStatistics(
                 records.size(),
@@ -51,7 +50,7 @@ public class HealthStatisticsService {
                 drinkVolumesByType(records));
     }
 
-    private HealthStatistics.DailyStatistics daily(HabitRecord record) {
+    private HealthStatistics.DailyStatistics daily(HabitRecord record, DailyGoals goals) {
         long nightSleepMinutes = sleepMinutes(record, SleepType.NIGHT);
         long napSleepMinutes = sleepMinutes(record, SleepType.NAP);
         int exerciseMinutes = record.exerciseMinutes();
@@ -61,7 +60,8 @@ public class HealthStatisticsService {
                 record.getRecordDate(), nightSleepMinutes, napSleepMinutes, nightSleepMinutes + napSleepMinutes,
                 record.getDietScore(), exerciseMinutes, moderateEquivalentMinutes, exerciseMinutesByType(record),
                 hydrationMl, drinkRules.riskDrinkVolumeMl(record),
-                thresholds.isAchieved(nightSleepMinutes + napSleepMinutes, record.getDietScore(), moderateEquivalentMinutes, hydrationMl));
+                goals.isAchieved(nightSleepMinutes + napSleepMinutes, record.getDietScore(),
+                        moderateEquivalentMinutes, hydrationMl));
     }
 
     private long sleepMinutes(HabitRecord record, SleepType sleepType) {

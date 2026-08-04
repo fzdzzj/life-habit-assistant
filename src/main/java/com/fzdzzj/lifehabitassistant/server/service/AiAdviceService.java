@@ -42,12 +42,14 @@ public class AiAdviceService {
     private final AiAdviceContentParser contentParser;
     private final ObjectMapper objectMapper;
     private final CurrentUser currentUser;
+    private final GoalService goals;
 
     public AiAdviceService(HabitService habits, HealthStatisticsService statistics,
                            RuleBasedAdviceGenerator ruleAdvice, AiAdviceHistoryRepository historyRepository,
                            AiQuotaUsageRepository quotaRepository, AiAdviceProperties properties,
                            AiSystemPromptLoader promptLoader, OpenAiChatClient chatClient,
-                           AiAdviceContentParser contentParser, ObjectMapper objectMapper, CurrentUser currentUser) {
+                           AiAdviceContentParser contentParser, ObjectMapper objectMapper, CurrentUser currentUser,
+                           GoalService goals) {
         this.habits = habits;
         this.statistics = statistics;
         this.ruleAdvice = ruleAdvice;
@@ -59,6 +61,7 @@ public class AiAdviceService {
         this.contentParser = contentParser;
         this.objectMapper = objectMapper;
         this.currentUser = currentUser;
+        this.goals = goals;
     }
 
     @Transactional
@@ -68,16 +71,18 @@ public class AiAdviceService {
         }
         LocalDate end = LocalDate.now();
         LocalDate start = end.minusDays(days - 1L);
+        var effectiveGoals = goals.get();
         return generate(currentUser.require(), AiAdviceType.ANALYSIS, start, end, days,
-                statistics.summarize(habits.range(start, end), end));
+                statistics.summarize(habits.range(start, end), end, effectiveGoals), effectiveGoals);
     }
 
     @Transactional
     public AiAdviceDtos.AiAdviceResponse weekly(LocalDate anyDay) {
         LocalDate start = anyDay.with(DayOfWeek.MONDAY);
         LocalDate end = start.plusDays(6);
+        var effectiveGoals = goals.get();
         return generate(currentUser.require(), AiAdviceType.WEEKLY_REPORT, start, end, 7,
-                statistics.summarize(habits.range(start, end), end));
+                statistics.summarize(habits.range(start, end), end, effectiveGoals), effectiveGoals);
     }
 
     @Transactional
@@ -85,13 +90,14 @@ public class AiAdviceService {
         LocalDate start = month.atDay(1);
         LocalDate end = month.atEndOfMonth();
         int days = Math.toIntExact(end.toEpochDay() - start.toEpochDay() + 1L);
+        var effectiveGoals = goals.get();
         return generate(currentUser.require(), AiAdviceType.MONTHLY_REPORT, start, end, days,
-                statistics.summarize(habits.range(start, end), end));
+                statistics.summarize(habits.range(start, end), end, effectiveGoals), effectiveGoals);
     }
 
     private AiAdviceDtos.AiAdviceResponse generate(User user, AiAdviceType type, LocalDate start, LocalDate end,
-                                                   int days, HealthStatistics summary) {
-        AnalysisDtos.AnalysisResponse rule = ruleAdvice.generate(days, summary);
+                                                   int days, HealthStatistics summary, DailyGoals goals) {
+        AnalysisDtos.AnalysisResponse rule = ruleAdvice.generate(days, summary, goals);
         if (!eligible(properties, summary)) {
             return persistAndRespond(user, type, start, end, AdviceSource.RULE_FALLBACK, toContent(rule),
                     null, false);
@@ -103,7 +109,7 @@ public class AiAdviceService {
                     null, false);
         }
         try {
-            String raw = chatClient.chat(promptLoader.load(), userPrompt(days, summary, rule));
+            String raw = chatClient.chat(promptLoader.load(), userPrompt(days, summary, rule, goals));
             AiAdviceDtos.AiAdviceContent content = contentParser.parse(raw);
             return persistAndRespond(user, type, start, end, AdviceSource.AI, content,
                     properties.model(), true);
@@ -172,7 +178,8 @@ public class AiAdviceService {
         return new Quota(dailyUsed, monthlyUsed);
     }
 
-    private String userPrompt(int days, HealthStatistics summary, AnalysisDtos.AnalysisResponse rule) {
+    private String userPrompt(int days, HealthStatistics summary, AnalysisDtos.AnalysisResponse rule,
+                              DailyGoals goals) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("days", days);
         payload.put("recordCount", summary.recordCount());
@@ -186,6 +193,7 @@ public class AiAdviceService {
         payload.put("drinkVolumesByType", summary.drinkVolumesByType());
         payload.put("ruleRisks", rule.risks());
         payload.put("ruleSuggestions", rule.suggestions());
+        payload.put("dailyGoals", goals);
         return "以下是最近 " + days + " 天的脱敏健康聚合指标：\n" + toJson(payload);
     }
 
