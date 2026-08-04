@@ -36,4 +36,11 @@ public interface AiQuotaUsageRepository extends JpaRepository<AiQuotaUsage, Long
             """, nativeQuery = true)
     Optional<Integer> findUsedCount(@Param("userId") Long userId, @Param("periodType") String periodType,
                                     @Param("periodKey") String periodKey);
+
+    @Query(value = """
+            SELECT COALESCE(SUM(used_count), 0)
+            FROM ai_quota_usage
+            WHERE period_type = :periodType AND period_key = :periodKey
+            """, nativeQuery = true)
+    long sumUsedCount(@Param("periodType") String periodType, @Param("periodKey") String periodKey);
 }

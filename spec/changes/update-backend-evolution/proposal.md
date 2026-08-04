@@ -71,7 +71,7 @@
 - `server/dao/`：新增会话、重置令牌、角色、对话会话/消息相关 Repository；`ExportTaskRepository` 增加原子流转查询。
 - `pojo/`：`User` 增加角色；新增 RefreshToken/Session、PasswordResetToken、对话会话/消息实体、管理响应 VO。
 - `common/`：错误码扩展（如 CANCELLED 冲突、令牌过期、权限不足等）。
-- `src/main/resources/db/migration/`：新增 V9（角色/会话/重置令牌/任务状态）与 V10（对话会话/消息）迁移。
+- `src/main/resources/db/migration/`：新增 V9（角色/会话/重置令牌/任务状态）、V10（用户邮箱/启用状态/AI 配额覆盖）与 V11（对话会话/消息）迁移。
 - `config/`（扩展预留）：领域包边界与设计约束测试，不新增无功能代码。
 
 ### 用户影响
@@ -97,7 +97,7 @@
   - `DELETE /api/v1/ai/conversations/{id}`（删除会话及其消息）
 
 ### 需要迁移
-- [x] 数据库迁移（V9：角色、会话/刷新令牌、重置令牌、任务状态扩展，已完成；V10：第三方身份映射表，随身份权限 PR；V11：对话会话/消息）
+- [x] 数据库迁移（V9：角色、会话/刷新令牌、重置令牌、任务状态扩展，已完成；V10：用户邮箱/启用状态/AI 配额覆盖，随身份权限 PR；第三方身份映射表留待微信/QQ 登录实施时新增；V11：对话会话/消息）
 - [ ] API 版本提升（新增端点走 v1，现有端点冻结）
 - [ ] 用户沟通（多端会话行为、登出语义说明）
 - [x] 文档更新（README、optimization-plan、OpenAPI）

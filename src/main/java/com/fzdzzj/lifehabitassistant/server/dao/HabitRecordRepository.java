@@ -16,4 +16,6 @@ public interface HabitRecordRepository extends JpaRepository<HabitRecord, Long> 
     Page<HabitRecord> findByUserAndRecordDateBetween(User user, LocalDate start, LocalDate end, Pageable pageable);
 
     List<HabitRecord> findByUserAndRecordDateBetweenOrderByRecordDateAsc(User user, LocalDate start, LocalDate end);
+
+    long countByUserId(Long userId);
 }

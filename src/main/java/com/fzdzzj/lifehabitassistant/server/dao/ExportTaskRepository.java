@@ -23,9 +23,25 @@ public interface ExportTaskRepository extends JpaRepository<ExportTask, Long> {
 
     long countByUserIdAndStatus(Long userId, ExportTaskStatus status);
 
+    long countByUserId(Long userId);
+
+    long countByStatus(ExportTaskStatus status);
+
     Page<ExportTask> findByUserId(Long userId, Pageable pageable);
 
     Page<ExportTask> findByUserIdAndStatus(Long userId, ExportTaskStatus status, Pageable pageable);
+
+    @Query(value = "SELECT t FROM ExportTask t JOIN FETCH t.user",
+            countQuery = "SELECT COUNT(t) FROM ExportTask t")
+    Page<ExportTask> findAllWithUser(Pageable pageable);
+
+    @Query(value = "SELECT t FROM ExportTask t JOIN FETCH t.user WHERE t.status = :status",
+            countQuery = "SELECT COUNT(t) FROM ExportTask t WHERE t.status = :status")
+    Page<ExportTask> findWithUserByStatus(@Param("status") ExportTaskStatus status, Pageable pageable);
+
+    @Query(value = "SELECT t FROM ExportTask t JOIN FETCH t.user WHERE t.user.id = :userId",
+            countQuery = "SELECT COUNT(t) FROM ExportTask t WHERE t.user.id = :userId")
+    Page<ExportTask> findWithUserByUserId(@Param("userId") Long userId, Pageable pageable);
 
     List<ExportTask> findByStatusAndCreatedAtBefore(ExportTaskStatus status, LocalDateTime cutoff, Pageable pageable);
 
@@ -54,6 +70,18 @@ public interface ExportTaskRepository extends JpaRepository<ExportTask, Long> {
             WHERE id = :id AND user_id = :userId AND status IN ('PENDING', 'RUNNING')
             """, nativeQuery = true)
     int markCancelled(@Param("id") Long id, @Param("userId") Long userId, @Param("now") LocalDateTime now);
+
+    /**
+     * Admin cancellation without a user scope; only PENDING/RUNNING can move.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query(value = """
+            UPDATE export_tasks
+            SET status = 'CANCELLED', cancelled_at = :now
+            WHERE id = :id AND status IN ('PENDING', 'RUNNING')
+            """, nativeQuery = true)
+    int markCancelledAnyUser(@Param("id") Long id, @Param("now") LocalDateTime now);
 
     /**
      * Atomic FAILED -> PENDING transition scoped to the owning user; clears the

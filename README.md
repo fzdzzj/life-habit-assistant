@@ -1,6 +1,6 @@
 # 生活习惯助手 Agent 后端
 
-基于 Spring Boot 3、Java 21 与 MySQL 的 REST 后端。项目聚焦单一普通用户：账号密码登录、每日习惯记录、趋势分析、规则型建议、周报/月报及 Excel/PDF 导出。
+基于 Spring Boot 3、Java 21 与 MySQL 的 REST 后端。支持多用户账号体系（RBAC）：账号密码登录、每日习惯记录、趋势分析、规则型建议、周报/月报及 Excel/PDF 导出。
 
 ## 架构与边界
 
@@ -11,11 +11,12 @@ server/
   controller/ HTTP 接口、参数校验
   service/    业务编排、事务与报告/建议计算
   dao/        Spring Data JPA Repository
-config/   JWT、Spring Security 与演示数据配置
+config/   JWT/会话、Spring Security、CORS 与演示数据配置
 ```
 
 - 所有普通 JSON 接口返回 `{"code": 1, "message": "success", "data": ...}`；导出接口返回文件流。
-- 密码使用 BCrypt 哈希；JWT 解析后的当前用户决定每一条查询和写入的归属。
+- 密码使用 BCrypt 哈希；短期无状态 access token + 可轮换的落库 refresh token（一次性使用，重用即撤销整个会话）；JWT 解析后的当前用户决定每一条查询和写入的归属。
+- 会话按设备独立（`sessions`/`refresh_tokens` 表），登出或撤销只影响目标会话；用户角色 USER/ADMIN，管理端点统一要求 ADMIN，系统始终保留至少一名有效管理员。
 - 同一用户每天只有一条记录（`user_id + record_date` 唯一约束）；重复提交更新原记录。
 - 每日健康目标可按用户自定义（`daily_goals` 表）；未设置时回落到全局阈值，统计达标、规则建议与 AI 提示词统一读取生效目标。
 - 周报、月报按请求即时聚合，不保存冗余报告快照；同一用户同周期在 TTL 内复用内存缓存，习惯/目标/AI 解读变化后立即失效。
@@ -54,8 +55,8 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 
 | 模块 | 方法与路径 | 说明 |
 | --- | --- | --- |
-| 认证 | `POST /api/auth/register` | 注册，返回 JWT |
-| 认证 | `POST /api/auth/login` | 登录，返回 JWT |
+| 认证 | `POST /api/auth/register` | 注册，返回 access token + refresh token + 会话标识；可携带 `email`/`deviceName`/`deviceId` |
+| 认证 | `POST /api/auth/login` | 登录，返回 access token + refresh token + 会话标识；禁用账号返回 403 |
 | 每日记录 | `POST /api/habits` | 新建或更新当日记录（饮品改由明细接口维护） |
 | 每日记录 | `GET /api/habits` | 分页和日期范围查询 |
 | 每日记录 | `GET /api/habits/{date}` | 查询单日记录 |
@@ -94,6 +95,37 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 
 大区间导出（如一年以上）不再同步阻塞请求：`POST /api/export-tasks` 创建任务后立即返回任务 ID，前端轮询 `GET /api/export-tasks/{id}` 直到 `SUCCEEDED`，再调用 `/download` 获取文件。任务按用户隔离，单用户最多 5 个待处理任务（`app.export.max-pending-per-user` 可调）；生成失败时状态为 `FAILED` 并附错误原因。周报/月报仍保留原有同步导出接口。
 
+### 身份、会话与密码找回
+
+新认证能力统一放在 `/api/v1/auth`：
+
+| 模块 | 方法与路径 | 说明 |
+| --- | --- | --- |
+| 会话 | `POST /api/v1/auth/refresh` | 一次性轮换 refresh token；旧令牌二次提交会撤销整个会话 |
+| 会话 | `POST /api/v1/auth/logout` | 使当前会话的 refresh token 立即失效（幂等） |
+| 会话 | `GET /api/v1/auth/sessions` | 当前用户全部有效会话（设备、IP、UA、登录/最后活跃时间） |
+| 会话 | `DELETE /api/v1/auth/sessions/{id}` | 撤销指定设备会话；他人会话返回 404 |
+| 密码找回 | `POST /api/v1/auth/password-reset/request` | 按注册邮箱发送一次性短时效重置令牌；账号不存在返回相同提示 |
+| 密码找回 | `POST /api/v1/auth/password-reset/confirm` | 校验令牌并重置密码，成功后撤销该用户全部会话 |
+
+access token 保持短时效无状态，撤销会话只立即使 refresh token 失效；`app.security.refresh-token-ttl-minutes`（默认 30 天）与 `app.security.password-reset-ttl-minutes`（默认 30 分钟）可调。未配置 `spring.mail.host` 时（dev），重置令牌写入日志便于本地验收；生产必须配置 SMTP。
+
+### 管理后台 API（仅后端）
+
+管理端点统一要求 ADMIN 角色（未认证 401、普通用户 403），前端界面单独交付：
+
+| 模块 | 方法与路径 | 说明 |
+| --- | --- | --- |
+| 用户 | `GET /api/v1/admin/users` | 分页列表，支持 `search`（用户名/邮箱模糊） |
+| 用户 | `GET /api/v1/admin/users/{id}` | 用户概览（记录数、导出任务数、配额用量） |
+| 用户 | `PATCH /api/v1/admin/users/{id}` | 调整角色/邮箱；降级或禁用最后一名有效 ADMIN 返回 400 |
+| 用户 | `POST /api/v1/admin/users/{id}/disable`、`/enable` | 禁用后全部会话立即失效且禁止登录 |
+| 配额 | `GET /api/v1/admin/quotas` | 用户 AI 配额列表（日/月用量与额度） |
+| 配额 | `PATCH /api/v1/admin/quotas/{userId}` | 调整日/月额度（传 null 恢复全局默认） |
+| 导出任务 | `GET /api/v1/admin/export-tasks` | 任意用户任务列表（按状态/用户过滤） |
+| 导出任务 | `POST /api/v1/admin/export-tasks/{id}/cancel` | 取消任意用户的 PENDING/RUNNING 任务 |
+| 统计 | `GET /api/v1/admin/stats` | 用户/管理员/导出任务状态/今日 AI 调用概览 |
+
 ### 自定义每日目标
 
 `PUT /api/goals` 请求示例：
@@ -122,7 +154,8 @@ AI 建议默认关闭，且只在用户显式调用 `POST /api/ai/...` 时触发
 
 ## 测试覆盖
 
-- 认证：重复用户名、BCrypt 哈希、错误密码。
+- 认证：重复用户名/邮箱、BCrypt 哈希、错误密码、禁用账号、refresh 轮换与重用撤销、多端会话、密码找回。
+- 权限：管理端点 401/403/放行、角色调整、最后一名管理员保护、配额调整。
 - 记录：跨午夜睡眠、同日更新且归属当前用户。
 - 分析：均值、总运动、连续记录、阈值达标。
 - 报告：自然周、闰年月边界、Excel 工作表和 PDF 可打开性。
@@ -160,6 +193,6 @@ AI 建议默认关闭，且只在用户显式调用 `POST /api/ai/...` 时触发
 
 ## 数据库迁移
 
-数据库结构由 Flyway 管理，迁移文件位于 `src/main/resources/db/migration/`。新环境只需先创建空数据库，应用启动时会自动执行 `V1__create_initial_schema.sql` 并记录到 `flyway_schema_history`；不再手工执行 SQL 文件。
+数据库结构由 Flyway 管理，迁移文件位于 `src/main/resources/db/migration/`（当前 V1–V10）。新环境只需先创建空数据库，应用启动时会自动执行 `V1__create_initial_schema.sql` 并记录到 `flyway_schema_history`；不再手工执行 SQL 文件。
 
 对于已经用旧版 `schema.sql` 建过表的数据库：仅在第一次启动前设置 `FLYWAY_BASELINE_ON_MIGRATE=true`，让 Flyway 建立基线而不重复执行 V1；启动成功后应删除该变量或改回 `false`。后续表结构调整只能新增 `V2__...sql`、`V3__...sql`，不能修改已经发布的迁移文件。

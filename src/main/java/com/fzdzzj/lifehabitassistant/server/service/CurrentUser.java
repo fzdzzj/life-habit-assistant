@@ -19,6 +19,10 @@ public class CurrentUser {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal()))
             throw ApiException.unauthorized("请先登录");
-        return users.findByUsername(auth.getName()).orElseThrow(() -> ApiException.unauthorized("账号不存在"));
+        User user = users.findByUsername(auth.getName()).orElseThrow(() -> ApiException.unauthorized("账号不存在"));
+        if (!user.isEnabled()) {
+            throw ApiException.forbidden("账号已被禁用，请联系管理员");
+        }
+        return user;
     }
 }

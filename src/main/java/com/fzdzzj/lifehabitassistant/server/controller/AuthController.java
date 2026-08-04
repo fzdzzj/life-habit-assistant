@@ -6,6 +6,7 @@ import com.fzdzzj.lifehabitassistant.pojo.AuthDtos;
 import com.fzdzzj.lifehabitassistant.server.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,11 +24,16 @@ public class AuthController {
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
     Result<AuthDtos.AuthResponse> register(@Valid @RequestBody AuthDtos.Credentials input, HttpServletRequest request) {
-        return Result.success(service.register(input, ipResolver.resolve(request)));
+        return Result.success(service.register(input, ipResolver.resolve(request), device(request, input)));
     }
 
     @PostMapping("/login")
     Result<AuthDtos.AuthResponse> login(@Valid @RequestBody AuthDtos.Credentials input, HttpServletRequest request) {
-        return Result.success(service.login(input, ipResolver.resolve(request)));
+        return Result.success(service.login(input, ipResolver.resolve(request), device(request, input)));
+    }
+
+    private AuthDtos.Device device(HttpServletRequest request, AuthDtos.Credentials input) {
+        return new AuthDtos.Device(input.deviceName(), input.deviceId(), ipResolver.resolve(request),
+                request.getHeader(HttpHeaders.USER_AGENT));
     }
 }
