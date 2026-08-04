@@ -99,6 +99,15 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 
 > 取舍：V10 只建本 PR 真实需要的列（`email`/`enabled`/AI 配额覆盖），不建第三方身份空表；第三方身份映射表留待微信/QQ 登录实施时新增迁移，AI 对话迁移顺延 V11。
 
+### AI 多轮对话（Issue #76）
+
+| 优化项 | 问题 | 方案 | 落点 | 验证 |
+| --- | --- | --- | --- | --- |
+| 会话与消息数据模型 | 只有单次显式 AI 解读，无法多轮追问 | V11 建 `ai_conversations`/`ai_conversation_messages`（用户归属、角色 USER/ASSISTANT、来源 AI/RULE_FALLBACK、时间；消息 `ON DELETE CASCADE`）；实体与按用户/最近活动 Repository | [V11 迁移](../src/main/resources/db/migration/V11__create_ai_conversations.sql)、[AiConversation.java](../src/main/java/com/fzdzzj/lifehabitassistant/pojo/AiConversation.java)、[AiConversationMessage.java](../src/main/java/com/fzdzzj/lifehabitassistant/pojo/AiConversationMessage.java) | `AiConversationHttpIntegrationTest` 创建/列表/删除、用户隔离、删除级联、消息正序、分页 |
+| 对话服务与接口 | 无会话概念，无法连续提问 | `POST/GET /api/v1/ai/conversations`、`GET/POST /{id}/messages`、`DELETE /{id}`；发送时保存用户消息 → 携带最近 N 轮上下文调模型 → 保存 AI 回复；失败/配额不足保存规则降级 | [AiConversationService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AiConversationService.java)、[AiConversationController.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/controller/AiConversationController.java) | `AiConversationServiceTest` 多轮限制（最近 4 条=2 轮）、降级、404、超长 400；HTTP 集成测试走通默认降级路径 |
+| 配额统一 | 对话若另建计数，会与报告解读各自为政 | 抽 `AiQuotaService` 共享 `ai_quota_usage` 日/月原子扣减；失败尝试计数、降级不计数；管理员用户级额度覆盖同时生效 | [AiQuotaService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AiQuotaService.java)、`AiAdviceService`/`AiConversationService` 共用 | `AiAdviceServiceTest` 回归 + `AiConversationServiceTest` 用户级覆盖；`AiConversationQuotaHttpIntegrationTest` 配额耗尽不调用模型、不计数 |
+| 上下文脱敏 | 对话若直接传业务对象会泄露个人数据 | 只传聚合指标与规则结论 + 最近 N 轮对话文本；不传用户名/账号 ID/备注/原始记录；`OpenAiChatClient` 增加多消息重载 | [ai-conversation-system-v1.txt](../src/main/resources/prompts/ai-conversation-system-v1.txt)、[SpringAiOpenAiChatClient.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/SpringAiOpenAiChatClient.java) | 单元测试断言 user prompt 不含用户名/备注；历史只含对话文本 |
+
 ## 三、关键取舍（防止“换个思路做坏”的约束）
 
 - **配额为什么用独立表而不是历史表计数**：历史表无法区分“调用失败（应计费）”和“未调用降级（不应计费）”；独立表只记录已发起的模型请求，语义干净。
@@ -147,3 +156,4 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 - [x] 本地 MySQL 冒烟：启动应用 → 注册登录 → 录数据 → 趋势/报告 → 导出 → AI 降级路径可走通（2026-08-04 实测通过，证据见二）。
 - [x] 自定义每日目标：`mvn test` 96 项通过（1 项 Testcontainers 跳过）；目标查询/upsert/重置/校验/隔离与自定义目标改变达标、建议全部覆盖。
 - [x] 报表缓存与异步导出：`mvn test` 122 项通过（1 项 Testcontainers 跳过）；缓存命中/失效、导出任务状态流转、用户隔离、HTTP 轮询与下载全覆盖；Flyway V8 真实 MySQL 迁移由 CI 的 Testcontainers 用例验证。
+- [x] AI 多轮对话：`mvn test` 208 项通过（1 项 Testcontainers 跳过）；会话/消息用户隔离、多轮上下文限制、模型失败与配额耗尽降级、删除级联、共享配额与上下文脱敏全部覆盖；Flyway V11 真实 MySQL 迁移由 CI 的 Testcontainers 用例验证。

@@ -198,7 +198,7 @@ class AiAdviceServiceTest {
         return new AiAdviceService(habits,
                 new HealthStatisticsService(TestDrinkRules.defaults()),
                 new RuleBasedAdviceGenerator(TestDrinkRules.defaults()),
-                history, quota, properties, new AiSystemPromptLoader(properties),
+                history, new AiQuotaService(quota, properties), properties, new AiSystemPromptLoader(properties),
                 chatClient, new AiAdviceContentParser(new ObjectMapper()),
                 new ObjectMapper(), currentUser, goals,
                 new ReportCache(new ReportProperties(Duration.ofMinutes(10), 128)));

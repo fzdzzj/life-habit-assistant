@@ -1,6 +1,6 @@
 # 生活习惯助手 Agent 后端
 
-基于 Spring Boot 3、Java 21 与 MySQL 的 REST 后端。支持多用户账号体系（RBAC）：账号密码登录、每日习惯记录、趋势分析、规则型建议、周报/月报及 Excel/PDF 导出。
+基于 Spring Boot 3、Java 21 与 MySQL 的 REST 后端。支持多用户账号体系（RBAC）：账号密码登录、每日习惯记录、趋势分析、规则型建议、AI 多轮对话、周报/月报及 Excel/PDF 导出。
 
 ## 架构与边界
 
@@ -148,6 +148,20 @@ AI 建议默认关闭，且只在用户显式调用 `POST /api/ai/...` 时触发
 
 启用方式：在 `.env` 中设置 `AI_ADVICE_ENABLED=true`，并填写 `OPENAI_API_KEY` 与 `OPENAI_MODEL`（模型 ID 以 OpenAI 官方文档为准）；配额默认每天 3 次、每月 30 次，可用 `AI_ADVICE_DAILY_LIMIT`、`AI_ADVICE_MONTHLY_LIMIT` 调整。详见 [AI 建议模块设计](docs/ai-advice.md)。
 
+### AI 多轮对话
+
+对话接口统一在 `/api/v1/ai/conversations`（需登录）：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/v1/ai/conversations` | 创建会话，可选 `title` |
+| `GET` | `/api/v1/ai/conversations` | 分页列表，按最近活动时间倒序 |
+| `GET` | `/api/v1/ai/conversations/{id}/messages` | 消息列表（按时间正序） |
+| `POST` | `/api/v1/ai/conversations/{id}/messages` | 发送消息，保存用户消息并返回 AI 或规则回复 |
+| `DELETE` | `/api/v1/ai/conversations/{id}` | 删除会话及其全部消息 |
+
+发送消息时，系统携带该会话最近 N 轮（默认 10）历史与最近 7 天脱敏聚合指标、规则结论一起调用模型；模型回复或本地规则降级都会落库（`source=AI` / `source=RULE_FALLBACK`）。对话与报告解读共享 `ai_quota_usage` 日/月配额：失败尝试计数、规则降级不计数，管理员用户级额度覆盖同样生效。默认关闭，启用需在 `.env` 设置 `AI_CONVERSATION_ENABLED=true`（仍依赖 `OPENAI_API_KEY`/`OPENAI_MODEL`），可用 `AI_CONVERSATION_CONTEXT_DAYS`、`AI_CONVERSATION_MAX_HISTORY_ROUNDS`、`AI_CONVERSATION_MAX_MESSAGE_LENGTH` 调整。
+
 ## 演示顺序
 
 注册/登录 → 录入记录 → 查询趋势 → 生成建议 → 查看周报或月报 → 下载 XLSX/PDF。
@@ -163,6 +177,7 @@ AI 建议默认关闭，且只在用户显式调用 `POST /api/ai/...` 时触发
 - 异步导出：任务创建、区间校验、待处理上限、用户隔离、状态流转（含失败原因）与 xlsx/pdf 下载。
 - 每日目标：默认回落全局阈值、新建/更新同一行、重置、参数校验、用户隔离，以及自定义目标改变趋势达标与规则建议。
 - AI 建议：解析容错、禁用/无数据/供应商失败/日额度/月额度的降级、按用户计费与隔离、报告导出只读取已保存建议。
+- AI 对话：会话/消息用户隔离、多轮上下文限制、模型失败与配额耗尽降级、删除级联、共享配额、上下文脱敏。
 - 正确性：并发重复提交的唯一约束重试、AI 配额表行级原子扣减与额度上限、异常兜底日志。
 
 ## Git 协作
@@ -193,6 +208,6 @@ AI 建议默认关闭，且只在用户显式调用 `POST /api/ai/...` 时触发
 
 ## 数据库迁移
 
-数据库结构由 Flyway 管理，迁移文件位于 `src/main/resources/db/migration/`（当前 V1–V10）。新环境只需先创建空数据库，应用启动时会自动执行 `V1__create_initial_schema.sql` 并记录到 `flyway_schema_history`；不再手工执行 SQL 文件。
+数据库结构由 Flyway 管理，迁移文件位于 `src/main/resources/db/migration/`（当前 V1–V11）。新环境只需先创建空数据库，应用启动时会自动执行 `V1__create_initial_schema.sql` 并记录到 `flyway_schema_history`；不再手工执行 SQL 文件。
 
 对于已经用旧版 `schema.sql` 建过表的数据库：仅在第一次启动前设置 `FLYWAY_BASELINE_ON_MIGRATE=true`，让 Flyway 建立基线而不重复执行 V1；启动成功后应删除该变量或改回 `false`。后续表结构调整只能新增 `V2__...sql`、`V3__...sql`，不能修改已经发布的迁移文件。

@@ -70,6 +70,12 @@ app:
       monthly-limit: ${AI_ADVICE_MONTHLY_LIMIT:30}
       timeout-seconds: ${AI_ADVICE_TIMEOUT_SECONDS:30}
       prompt-version: ${AI_ADVICE_PROMPT_VERSION:v1}
+    conversation:
+      enabled: ${AI_CONVERSATION_ENABLED:false}
+      context-days: ${AI_CONVERSATION_CONTEXT_DAYS:7}
+      max-history-rounds: ${AI_CONVERSATION_MAX_HISTORY_ROUNDS:10}
+      max-message-length: ${AI_CONVERSATION_MAX_MESSAGE_LENGTH:2000}
+      prompt-version: ${AI_CONVERSATION_PROMPT_VERSION:v1}
   drink:
     hydration-ratios:
       WATER: 1.0
