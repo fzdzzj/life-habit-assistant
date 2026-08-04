@@ -4,55 +4,55 @@
     "category": "阶段 1：AI 客户端适配层",
     "task": "流式与结构化输出能力",
     "steps": [
-      { "step": "OpenAiChatClient 接口新增 stream（返回 Flux<String>）与 chatStructured（返回结构化对象）方法，保留现有 chat 行为", "completed": false },
-      { "step": "SpringAiOpenAiChatClient 基于 ChatClient.stream().content() 与 call().entity() 实现，空内容与异常包装与现有约定一致", "completed": false },
-      { "step": "单元测试：mock ChatClient 验证消息组装、流式异常包装、结构化空结果处理", "completed": false }
+      { "step": "OpenAiChatClient 接口新增 stream（返回 Flux<String>）与 chatStructured（返回结构化对象）方法，保留现有 chat 行为", "completed": true },
+      { "step": "SpringAiOpenAiChatClient 基于 ChatClient.stream().content() 与 call().entity() 实现，空内容与异常包装与现有约定一致", "completed": true },
+      { "step": "单元测试：mock ChatClient 验证消息组装、流式异常包装、结构化空结果处理", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "阶段 2：对话流式输出（PR1）",
     "task": "流式配置与超时",
     "steps": [
-      { "step": "新增 app.ai.conversation.stream-timeout-seconds（默认 300）并写入 AiConversationProperties", "completed": false },
-      { "step": "构建流式专用 ChatClient bean（独立超时，复用 api-key/model/base-url 配置）", "completed": false },
-      { "step": "更新 .env.example 与 application.yml 注释", "completed": false }
+      { "step": "新增 app.ai.conversation.stream-timeout-seconds（默认 300）并写入 AiConversationProperties", "completed": true },
+      { "step": "构建流式专用 ChatClient bean（独立超时，复用 api-key/model/base-url 配置）", "completed": true },
+      { "step": "更新 .env.example 与 application.yml 注释", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 3,
     "category": "阶段 2：对话流式输出（PR1）",
     "task": "流式生命周期服务",
     "steps": [
-      { "step": "拆分 startStream（事务：校验归属、保存用户消息、扣配额、准备脱敏上下文与历史）/ streamText（订阅模型增量）/ finishStream（事务：保存完整或降级消息、更新会话活跃时间）", "completed": false },
-      { "step": "新增每会话单任务协调器：同会话新流式或同步请求到达时取消旧流式任务；客户端断开、超时或主动取消时取消模型订阅，已收到非空文本保存为 AI 消息，否则保存规则降级", "completed": false },
-      { "step": "保持现有同步 send 接口与行为不变", "completed": false }
+      { "step": "拆分 startStream（事务：校验归属、保存用户消息、扣配额、准备脱敏上下文与历史）/ streamText（订阅模型增量）/ finishStream（事务：保存完整或降级消息、更新会话活跃时间）", "completed": true },
+      { "step": "新增每会话单任务协调器：同会话新流式或同步请求到达时取消旧流式任务；客户端断开、超时或主动取消时取消模型订阅，已收到非空文本保存为 AI 消息，否则保存规则降级", "completed": true },
+      { "step": "保持现有同步 send 接口与行为不变", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 4,
     "category": "阶段 2：对话流式输出（PR1）",
     "task": "SSE 端点与事件协议",
     "steps": [
-      { "step": "新增 POST /api/v1/ai/conversations/{id}/messages/stream，响应 text/event-stream，鉴权沿用 Authorization header", "completed": false },
-      { "step": "事件协议：start、delta（增量文本）、complete（完整消息+实时配额）、fallback（降级）、error（协议错误）、cancelled（被取消），并保证事件顺序与持久化一致", "completed": false },
-      { "step": "新增 POST /api/v1/ai/conversations/{id}/messages/cancel：取消该会话进行中任务；无进行中任务返回 409；流式端点用户隔离：会话不存在或不属于当前用户返回 404 且不保存消息", "completed": false }
+      { "step": "新增 POST /api/v1/ai/conversations/{id}/messages/stream，响应 text/event-stream，鉴权沿用 Authorization header", "completed": true },
+      { "step": "事件协议：start、delta（增量文本）、complete（完整消息+实时配额）、fallback（降级）、error（协议错误）、cancelled（被取消），并保证事件顺序与持久化一致", "completed": true },
+      { "step": "新增 POST /api/v1/ai/conversations/{id}/messages/cancel：取消该会话进行中任务；无进行中任务返回 409；流式端点用户隔离：会话不存在或不属于当前用户返回 404 且不保存消息", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 5,
     "category": "阶段 2：对话流式输出（PR1）",
     "task": "流式测试",
     "steps": [
-      { "step": "单元测试：正常流式事件顺序、模型异常降级并计数、配额不足降级不计数、断开保存部分文本、越权 404、同会话新请求取消旧任务、主动取消后保存已收文本", "completed": false },
-      { "step": "HTTP 集成测试：SSE 响应类型、start/delta/complete 事件、fallback 事件、cancel 端点（成功/无任务 409）、401/404", "completed": false },
-      { "step": "回归：现有同步对话、配额、脱敏测试全部通过", "completed": false }
+      { "step": "单元测试：正常流式事件顺序、模型异常降级并计数、配额不足降级不计数、断开保存部分文本、越权 404、同会话新请求取消旧任务、主动取消后保存已收文本", "completed": true },
+      { "step": "HTTP 集成测试：SSE 响应类型、start/delta/complete 事件、fallback 事件、cancel 端点（成功/无任务 409）、401/404", "completed": true },
+      { "step": "回归：现有同步对话、配额、脱敏测试全部通过", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 6,

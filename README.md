@@ -159,9 +159,13 @@ AI 建议默认关闭，且只在用户显式调用 `POST /api/ai/...` 时触发
 | `GET` | `/api/v1/ai/conversations` | 分页列表，按最近活动时间倒序 |
 | `GET` | `/api/v1/ai/conversations/{id}/messages` | 消息列表（按时间正序） |
 | `POST` | `/api/v1/ai/conversations/{id}/messages` | 发送消息，保存用户消息并返回 AI 或规则回复 |
+| `POST` | `/api/v1/ai/conversations/{id}/messages/stream` | SSE 流式发送：`start`/`delta`/`complete`/`fallback`/`error`/`cancelled` 事件 |
+| `POST` | `/api/v1/ai/conversations/{id}/messages/cancel` | 取消该会话进行中的生成任务；无任务返回 409 |
 | `DELETE` | `/api/v1/ai/conversations/{id}` | 删除会话及其全部消息 |
 
-发送消息时，系统携带该会话最近 N 轮（默认 10）历史与最近 7 天脱敏聚合指标、规则结论一起调用模型；模型回复或本地规则降级都会落库（`source=AI` / `source=RULE_FALLBACK`）。对话与报告解读共享 `ai_quota_usage` 日/月配额：失败尝试计数、规则降级不计数，管理员用户级额度覆盖同样生效。默认关闭，启用需在 `.env` 设置 `AI_CONVERSATION_ENABLED=true`（仍依赖 `OPENAI_API_KEY`/`OPENAI_MODEL`），可用 `AI_CONVERSATION_CONTEXT_DAYS`、`AI_CONVERSATION_MAX_HISTORY_ROUNDS`、`AI_CONVERSATION_MAX_MESSAGE_LENGTH` 调整。
+发送消息时，系统携带该会话最近 N 轮（默认 10）历史与最近 7 天脱敏聚合指标、规则结论一起调用模型；模型回复或本地规则降级都会落库（`source=AI` / `source=RULE_FALLBACK`）。对话与报告解读共享 `ai_quota_usage` 日/月配额：失败尝试计数、规则降级不计数，管理员用户级额度覆盖同样生效。默认关闭，启用需在 `.env` 设置 `AI_CONVERSATION_ENABLED=true`（仍依赖 `OPENAI_API_KEY`/`OPENAI_MODEL`），可用 `AI_CONVERSATION_CONTEXT_DAYS`、`AI_CONVERSATION_MAX_HISTORY_ROUNDS`、`AI_CONVERSATION_MAX_MESSAGE_LENGTH`、`AI_CONVERSATION_STREAM_TIMEOUT_SECONDS`（流式超时，默认 300 秒）调整。
+
+流式发送沿用同一配额与降级语义：先扣配额后调模型，失败计费、降级不计数；每会话同一时间只允许一个进行中生成，新流式或同步发送会取消旧流式任务，取消/断开时已收到的文本保存为 AI 消息，未收到任何文本则保存规则降级。鉴权继续使用 `Authorization: Bearer`，不引入 query token。
 
 ## 演示顺序
 
@@ -179,6 +183,7 @@ AI 建议默认关闭，且只在用户显式调用 `POST /api/ai/...` 时触发
 - 每日目标：默认回落全局阈值、新建/更新同一行、重置、参数校验、用户隔离，以及自定义目标改变趋势达标与规则建议。
 - AI 建议：解析容错、禁用/无数据/供应商失败/日额度/月额度的降级、按用户计费与隔离、报告导出只读取已保存建议。
 - AI 对话：会话/消息用户隔离、多轮上下文限制、模型失败与配额耗尽降级、删除级联、共享配额、上下文脱敏。
+- AI 对话流式：SSE 事件协议与顺序、模型失败/配额不足降级、取消保存已收文本或降级、同会话单任务互斥、越权 404、异步鉴权恢复。
 - 架构约束：迁移表必须有实体映射、预留能力不建空表、迁移只增不改、排行榜复用统一统计口径、端类型不进入鉴权；真实 MySQL 上 Flyway V1–V11 与 Hibernate 校验全上下文启动（Testcontainers，CI 必跑）。
 - 正确性：并发重复提交的唯一约束重试、AI 配额表行级原子扣减与额度上限、异常兜底日志。
 

@@ -4,12 +4,15 @@ import com.fzdzzj.lifehabitassistant.common.Result;
 import com.fzdzzj.lifehabitassistant.pojo.AiConversationDtos;
 import com.fzdzzj.lifehabitassistant.pojo.PageResponse;
 import com.fzdzzj.lifehabitassistant.server.service.AiConversationService;
+import com.fzdzzj.lifehabitassistant.server.service.AiConversationStreamService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,9 +30,12 @@ import java.util.List;
 @Validated
 public class AiConversationController {
     private final AiConversationService service;
+    private final AiConversationStreamService streamService;
 
-    public AiConversationController(AiConversationService service) {
+    public AiConversationController(AiConversationService service,
+                                    AiConversationStreamService streamService) {
         this.service = service;
+        this.streamService = streamService;
     }
 
     @PostMapping
@@ -57,7 +63,20 @@ public class AiConversationController {
     Result<AiConversationDtos.SendMessageResponse> send(
             @PathVariable @Positive(message = "id 必须大于 0") Long id,
             @Valid @RequestBody AiConversationDtos.SendMessageRequest request) {
+        streamService.cancelActiveForSyncSend(id);
         return Result.success(service.send(id, request));
+    }
+
+    @PostMapping(value = "/{id}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    SseEmitter stream(@PathVariable @Positive(message = "id 必须大于 0") Long id,
+                      @Valid @RequestBody AiConversationDtos.SendMessageRequest request) {
+        return streamService.start(id, request);
+    }
+
+    @PostMapping("/{id}/messages/cancel")
+    Result<Void> cancel(@PathVariable @Positive(message = "id 必须大于 0") Long id) {
+        streamService.cancelAndFinish(id);
+        return Result.success(null);
     }
 
     @DeleteMapping("/{id}")

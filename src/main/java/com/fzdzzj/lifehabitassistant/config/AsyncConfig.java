@@ -27,4 +27,20 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * Bounded executor for streaming AI conversation generation. Streams are
+     * long-lived but few; a small pool with a bounded queue keeps them from
+     * starving the export workers or blocking request threads.
+     */
+    @Bean(name = "aiStreamExecutor")
+    public Executor aiStreamExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(200);
+        executor.setThreadNamePrefix("ai-stream-");
+        executor.initialize();
+        return executor;
+    }
 }

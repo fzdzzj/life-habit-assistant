@@ -13,6 +13,7 @@ public record AiConversationProperties(
         int contextDays,
         int maxHistoryRounds,
         int maxMessageLength,
+        int streamTimeoutSeconds,
         String promptVersion) {
 
     public AiConversationProperties {
@@ -24,6 +25,9 @@ public record AiConversationProperties(
         }
         if (maxMessageLength < 1 || maxMessageLength > 10000) {
             throw new IllegalArgumentException("app.ai.conversation.max-message-length must be between 1 and 10000");
+        }
+        if (streamTimeoutSeconds < 1 || streamTimeoutSeconds > 3600) {
+            throw new IllegalArgumentException("app.ai.conversation.stream-timeout-seconds must be between 1 and 3600");
         }
         if (promptVersion == null || promptVersion.isBlank()) {
             promptVersion = "v1";
