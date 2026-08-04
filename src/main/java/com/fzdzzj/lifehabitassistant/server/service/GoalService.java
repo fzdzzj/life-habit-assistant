@@ -4,7 +4,7 @@ import com.fzdzzj.lifehabitassistant.pojo.DailyGoal;
 import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.GoalDtos;
 import com.fzdzzj.lifehabitassistant.pojo.User;
-import com.fzdzzj.lifehabitassistant.config.ReportCache;
+import com.fzdzzj.lifehabitassistant.config.UserCacheEvictor;
 import com.fzdzzj.lifehabitassistant.server.dao.DailyGoalRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,14 +14,14 @@ public class GoalService {
     private final DailyGoalRepository goals;
     private final CurrentUser currentUser;
     private final HealthThresholds thresholds;
-    private final ReportCache reportCache;
+    private final UserCacheEvictor cacheEvictor;
 
     public GoalService(DailyGoalRepository goals, CurrentUser currentUser, HealthThresholds thresholds,
-                       ReportCache reportCache) {
+    UserCacheEvictor cacheEvictor) {
         this.goals = goals;
         this.currentUser = currentUser;
         this.thresholds = thresholds;
-        this.reportCache = reportCache;
+        this.cacheEvictor = cacheEvictor;
     }
 
     @Transactional(readOnly = true)
@@ -52,7 +52,7 @@ public class GoalService {
             goal.update(goals);
         }
         DailyGoals saved = this.goals.save(goal).toGoals();
-        reportCache.evictUser(user.getId());
+        cacheEvictor.evictAll(user.getId());
         return saved;
     }
 
@@ -60,7 +60,7 @@ public class GoalService {
     public DailyGoals reset() {
         User user = currentUser.require();
         goals.deleteByUser(user);
-        reportCache.evictUser(user.getId());
+        cacheEvictor.evictAll(user.getId());
         return thresholds.toGoals();
     }
 }

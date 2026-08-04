@@ -45,7 +45,19 @@ class AiAdviceHttpIntegrationTest {
                 .andExpect(jsonPath("$.data.content.periodSummary").isNotEmpty())
                 .andExpect(jsonPath("$.data.dailyUsed").value(0))
                 .andExpect(jsonPath("$.data.dailyLimit").value(3))
-                .andExpect(jsonPath("$.data.monthlyLimit").value(30));
+                .andExpect(jsonPath("$.data.monthlyLimit").value(30))
+                .andExpect(jsonPath("$.data.cached").value(false));
+    }
+
+    @Test
+    void refreshParameterShouldBeAcceptedAndFallbackStillNotCached() throws Exception {
+        String token = register("refresh-" + UUID.randomUUID());
+
+        mockMvc.perform(post("/api/ai/analyses?days=7&refresh=true")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.source").value("RULE_FALLBACK"))
+                .andExpect(jsonPath("$.data.cached").value(false));
     }
 
     @Test

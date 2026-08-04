@@ -1,7 +1,7 @@
 package com.fzdzzj.lifehabitassistant.server.service;
 
 import com.fzdzzj.lifehabitassistant.common.ApiException;
-import com.fzdzzj.lifehabitassistant.config.ReportCache;
+import com.fzdzzj.lifehabitassistant.config.UserCacheEvictor;
 import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
 import com.fzdzzj.lifehabitassistant.pojo.SleepSession;
 import com.fzdzzj.lifehabitassistant.pojo.SleepSessionDtos;
@@ -21,14 +21,14 @@ public class SleepSessionService {
     private final HabitRecordRepository habits;
     private final SleepSessionRepository sessions;
     private final CurrentUser currentUser;
-    private final ReportCache reportCache;
+    private final UserCacheEvictor cacheEvictor;
 
     public SleepSessionService(HabitRecordRepository habits, SleepSessionRepository sessions,
-                               CurrentUser currentUser, ReportCache reportCache) {
+    CurrentUser currentUser, UserCacheEvictor cacheEvictor) {
         this.habits = habits;
         this.sessions = sessions;
         this.currentUser = currentUser;
-        this.reportCache = reportCache;
+        this.cacheEvictor = cacheEvictor;
     }
 
     @Transactional(readOnly = true)
@@ -42,7 +42,7 @@ public class SleepSessionService {
         List<SleepSession> existing = sessions.findByHabitRecordOrderBySleepStartAtAsc(habit);
         validate(recordDate, request, existing, null);
         SleepSession saved = sessions.save(new SleepSession(habit, request.sleepType(), request.sleepStartAt(), request.wakeAt()));
-        reportCache.evictUser(habit.getUser().getId());
+        cacheEvictor.evictAll(habit.getUser().getId());
         return toResponse(saved);
     }
 
@@ -52,7 +52,7 @@ public class SleepSessionService {
         SleepSession session = sessions.findByIdAndHabitRecord(id, habit).orElseThrow(() -> ApiException.notFound("睡眠片段不存在"));
         validate(recordDate, request, sessions.findByHabitRecordOrderBySleepStartAtAsc(habit), id);
         session.update(request.sleepType(), request.sleepStartAt(), request.wakeAt());
-        reportCache.evictUser(habit.getUser().getId());
+        cacheEvictor.evictAll(habit.getUser().getId());
         return toResponse(session);
     }
 
@@ -60,7 +60,7 @@ public class SleepSessionService {
     public void delete(LocalDate recordDate, Long id) {
         HabitRecord habit = requireHabit(recordDate);
         sessions.delete(sessions.findByIdAndHabitRecord(id, habit).orElseThrow(() -> ApiException.notFound("睡眠片段不存在")));
-        reportCache.evictUser(habit.getUser().getId());
+        cacheEvictor.evictAll(habit.getUser().getId());
     }
 
     private HabitRecord requireHabit(LocalDate recordDate) {

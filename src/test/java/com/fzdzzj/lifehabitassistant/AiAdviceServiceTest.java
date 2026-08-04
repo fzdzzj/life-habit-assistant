@@ -1,8 +1,10 @@
 package com.fzdzzj.lifehabitassistant;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fzdzzj.lifehabitassistant.config.AiAdviceCache;
 import com.fzdzzj.lifehabitassistant.config.ReportCache;
 import com.fzdzzj.lifehabitassistant.config.ReportProperties;
+import com.fzdzzj.lifehabitassistant.config.UserCacheEvictor;
 import com.fzdzzj.lifehabitassistant.pojo.*;
 import com.fzdzzj.lifehabitassistant.server.dao.AiAdviceHistoryRepository;
 import com.fzdzzj.lifehabitassistant.server.dao.AiQuotaUsageRepository;
@@ -25,12 +27,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class AiAdviceServiceTest {
-    private static final String AI_JSON = """
-            {"periodSummary":"整体稳定","riskExplanation":"睡眠略不足",
-            "recommendations":["固定就寝时间","晚餐少用屏幕"],
-            "nextPeriodPlan":"每天记录","encouragement":"继续保持","disclaimer":"仅供健康参考"}
-            """;
-
     private HabitService habits;
     private AiAdviceHistoryRepository history;
     private AiQuotaUsageRepository quota;
@@ -39,6 +35,8 @@ class AiAdviceServiceTest {
     private GoalService goals;
     private User user;
     private AiAdviceService service;
+    private AiAdviceCache adviceCache;
+    private UserCacheEvictor cacheEvictor;
 
     @BeforeEach
     void setUp() {
@@ -90,7 +88,8 @@ class AiAdviceServiceTest {
     @Test
     void successfulCallShouldReturnAiContentAndCountQuota() {
         givenOneRecord();
-        when(chatClient.chat(any(), any())).thenReturn(AI_JSON);
+        when(chatClient.chatStructured(any(), any(), eq(AiAdviceDtos.AiAdviceContent.class)))
+                .thenReturn(aiContent());
         quotaUsed(1);
 
         AiAdviceDtos.AiAdviceResponse response = service.analysis(7);
@@ -105,13 +104,15 @@ class AiAdviceServiceTest {
         assertEquals("gpt-demo", saved.getModelName());
         assertTrue(saved.isCallCounted());
         assertTrue(saved.getContent().contains("periodSummary"));
-        verify(chatClient).chat(any(), contains("脱敏健康聚合指标"));
+        verify(chatClient).chatStructured(any(), contains("脱敏健康聚合指标"),
+                eq(AiAdviceDtos.AiAdviceContent.class));
     }
 
     @Test
     void providerFailureShouldFallBackAndCountTheAttempt() {
         givenOneRecord();
-        when(chatClient.chat(any(), any())).thenThrow(new IllegalStateException("provider timeout"));
+        when(chatClient.chatStructured(any(), any(), eq(AiAdviceDtos.AiAdviceContent.class)))
+                .thenThrow(new IllegalStateException("provider timeout"));
         quotaUsed(1);
 
         AiAdviceDtos.AiAdviceResponse response = service.analysis(7);
@@ -152,7 +153,8 @@ class AiAdviceServiceTest {
     @Test
     void perUserQuotaOverrideShouldReplaceGlobalLimits() {
         givenOneRecord();
-        when(chatClient.chat(any(), any())).thenReturn(AI_JSON);
+        when(chatClient.chatStructured(any(), any(), eq(AiAdviceDtos.AiAdviceContent.class)))
+                .thenReturn(aiContent());
         when(user.getAiDailyLimit()).thenReturn(5);
         when(user.getAiMonthlyLimit()).thenReturn(60);
         quotaUsed(1);
@@ -169,7 +171,8 @@ class AiAdviceServiceTest {
     @Test
     void quotaShouldBeCountedPerUser() {
         givenOneRecord();
-        when(chatClient.chat(any(), any())).thenReturn(AI_JSON);
+        when(chatClient.chatStructured(any(), any(), eq(AiAdviceDtos.AiAdviceContent.class)))
+                .thenReturn(aiContent());
 
         service.analysis(7);
 
@@ -194,14 +197,78 @@ class AiAdviceServiceTest {
         verify(habits).range(eq(LocalDate.of(2026, 7, 13)), eq(LocalDate.of(2026, 7, 19)));
     }
 
+    @Test
+    void secondSamePeriodRequestShouldHitCacheWithoutModelOrHistory() {
+        givenOneRecord();
+        when(chatClient.chatStructured(any(), any(), eq(AiAdviceDtos.AiAdviceContent.class)))
+                .thenReturn(aiContent());
+        quotaUsed(1);
+
+        AiAdviceDtos.AiAdviceResponse first = service.analysis(7);
+        AiAdviceDtos.AiAdviceResponse second = service.analysis(7);
+
+        assertFalse(first.cached());
+        assertTrue(second.cached());
+        assertEquals(first.historyId(), second.historyId());
+        assertEquals(first.content(), second.content());
+        verify(chatClient, times(1)).chatStructured(any(), any(),
+                eq(AiAdviceDtos.AiAdviceContent.class));
+        verify(history, times(1)).save(any());
+        verify(quota, times(1)).incrementIfBelowLimit(eq(42L), eq("DAY"), any(), anyInt(), any());
+    }
+
+    @Test
+    void refreshShouldForceRegenerationAndUpdateCache() {
+        givenOneRecord();
+        when(chatClient.chatStructured(any(), any(), eq(AiAdviceDtos.AiAdviceContent.class)))
+                .thenReturn(aiContent());
+        quotaUsed(1);
+
+        service.analysis(7);
+        AiAdviceDtos.AiAdviceResponse refreshed = service.analysis(7, true);
+
+        assertFalse(refreshed.cached());
+        verify(chatClient, times(2)).chatStructured(any(), any(),
+                eq(AiAdviceDtos.AiAdviceContent.class));
+    }
+
+    @Test
+    void userDataChangeShouldInvalidateAdviceCache() {
+        givenOneRecord();
+        when(chatClient.chatStructured(any(), any(), eq(AiAdviceDtos.AiAdviceContent.class)))
+                .thenReturn(aiContent());
+        quotaUsed(1);
+
+        service.analysis(7);
+        assertTrue(service.analysis(7).cached());
+
+        cacheEvictor.evictAll(42L);
+
+        assertFalse(service.analysis(7).cached());
+        verify(chatClient, times(2)).chatStructured(any(), any(),
+                eq(AiAdviceDtos.AiAdviceContent.class));
+    }
+
+    @Test
+    void ruleFallbackShouldNotBeCached() {
+        givenOneRecord();
+        service = service(enabled(false, 3, 30));
+
+        service.analysis(7);
+
+        LocalDate end = LocalDate.now();
+        assertTrue(adviceCache.get(42L, AiAdviceType.ANALYSIS, end.minusDays(6), end, "v1").isEmpty());
+    }
+
     private AiAdviceService service(AiAdviceProperties properties) {
+        adviceCache = new AiAdviceCache(properties);
+        cacheEvictor = new UserCacheEvictor(mock(ReportCache.class), adviceCache);
         return new AiAdviceService(habits,
                 new HealthStatisticsService(TestDrinkRules.defaults()),
                 new RuleBasedAdviceGenerator(TestDrinkRules.defaults()),
                 history, new AiQuotaService(quota, properties), properties, new AiSystemPromptLoader(properties),
                 chatClient, new AiAdviceContentParser(new ObjectMapper()),
-                new ObjectMapper(), currentUser, goals,
-                new ReportCache(new ReportProperties(Duration.ofMinutes(10), 128)));
+                new ObjectMapper(), currentUser, goals, cacheEvictor, adviceCache);
     }
 
     private void quotaUsed(int used) {
@@ -214,7 +281,13 @@ class AiAdviceServiceTest {
 
     private AiAdviceProperties enabled(boolean enabled, int dailyLimit, int monthlyLimit) {
         return new AiAdviceProperties(enabled, "sk-test", "gpt-demo",
-                "https://api.openai.com/v1", dailyLimit, monthlyLimit, 30, "v1");
+                "https://api.openai.com/v1", dailyLimit, monthlyLimit, 30, "v1",
+                Duration.ofMinutes(10), 128);
+    }
+
+    private AiAdviceDtos.AiAdviceContent aiContent() {
+        return new AiAdviceDtos.AiAdviceContent("整体稳定", "睡眠略不足",
+                List.of("固定就寝时间", "晚餐少用屏幕"), "每天记录", "继续保持", "仅供健康参考");
     }
 
     private void givenOneRecord() {

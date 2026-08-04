@@ -6,6 +6,8 @@ import com.fzdzzj.lifehabitassistant.pojo.GoalDtos;
 import com.fzdzzj.lifehabitassistant.pojo.User;
 import com.fzdzzj.lifehabitassistant.config.ReportCache;
 import com.fzdzzj.lifehabitassistant.config.ReportProperties;
+import com.fzdzzj.lifehabitassistant.config.AiAdviceCache;
+import com.fzdzzj.lifehabitassistant.config.UserCacheEvictor;
 import com.fzdzzj.lifehabitassistant.server.dao.DailyGoalRepository;
 import com.fzdzzj.lifehabitassistant.server.service.CurrentUser;
 import com.fzdzzj.lifehabitassistant.server.service.GoalService;
@@ -101,7 +103,8 @@ class GoalServiceTest {
 
     private GoalService service(DailyGoalRepository repository, CurrentUser currentUser) {
         return new GoalService(repository, currentUser, new HealthThresholds(420, 540, 1500, 30, 3),
-                new ReportCache(new ReportProperties(Duration.ofMinutes(10), 128)));
+                new UserCacheEvictor(new ReportCache(new ReportProperties(Duration.ofMinutes(10), 128)),
+                        mock(AiAdviceCache.class)));
     }
 
     private GoalDtos.GoalRequest request(DailyGoals goals) {

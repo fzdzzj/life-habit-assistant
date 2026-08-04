@@ -28,20 +28,24 @@ public class AiAdviceController {
 
     @PostMapping("/analyses")
     public Result<AiAdviceDtos.AiAdviceResponse> analysis(
-            @RequestParam(defaultValue = "7") @Min(1) @Max(366) int days) {
-        return Result.success(service.analysis(days));
+            @RequestParam(defaultValue = "7") @Min(1) @Max(366) int days,
+            @RequestParam(defaultValue = "false") boolean refresh) {
+        return Result.success(service.analysis(days, refresh));
     }
 
     @PostMapping("/reports/weekly")
     public Result<AiAdviceDtos.AiAdviceResponse> weekly(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-            @PastOrPresent(message = "week 不得晚于今天") LocalDate week) {
-        return Result.success(service.weekly(week == null ? LocalDate.now() : week));
+            @PastOrPresent(message = "week 不得晚于今天") LocalDate week,
+            @RequestParam(defaultValue = "false") boolean refresh) {
+        return Result.success(service.weekly(week == null ? LocalDate.now() : week, refresh));
     }
 
     @PostMapping("/reports/monthly")
-    public Result<AiAdviceDtos.AiAdviceResponse> monthly(@RequestParam(required = false) String month) {
-        return Result.success(service.monthly(month == null ? YearMonth.now() : parseMonth(month)));
+    public Result<AiAdviceDtos.AiAdviceResponse> monthly(
+            @RequestParam(required = false) String month,
+            @RequestParam(defaultValue = "false") boolean refresh) {
+        return Result.success(service.monthly(month == null ? YearMonth.now() : parseMonth(month), refresh));
     }
 
     private YearMonth parseMonth(String month) {

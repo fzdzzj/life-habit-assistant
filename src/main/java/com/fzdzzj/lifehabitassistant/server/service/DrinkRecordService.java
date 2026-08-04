@@ -1,7 +1,7 @@
 package com.fzdzzj.lifehabitassistant.server.service;
 
 import com.fzdzzj.lifehabitassistant.common.ApiException;
-import com.fzdzzj.lifehabitassistant.config.ReportCache;
+import com.fzdzzj.lifehabitassistant.config.UserCacheEvictor;
 import com.fzdzzj.lifehabitassistant.pojo.DrinkRecord;
 import com.fzdzzj.lifehabitassistant.pojo.DrinkRecordDtos;
 import com.fzdzzj.lifehabitassistant.pojo.DrinkType;
@@ -21,15 +21,15 @@ public class DrinkRecordService {
     private final DrinkRecordRepository drinks;
     private final CurrentUser currentUser;
     private final DrinkHealthRules rules;
-    private final ReportCache reportCache;
+    private final UserCacheEvictor cacheEvictor;
 
     public DrinkRecordService(HabitRecordRepository habits, DrinkRecordRepository drinks, CurrentUser currentUser,
-                              DrinkHealthRules rules, ReportCache reportCache) {
+    DrinkHealthRules rules, UserCacheEvictor cacheEvictor) {
         this.habits = habits;
         this.drinks = drinks;
         this.currentUser = currentUser;
         this.rules = rules;
-        this.reportCache = reportCache;
+        this.cacheEvictor = cacheEvictor;
     }
 
     @Transactional(readOnly = true)
@@ -43,7 +43,7 @@ public class DrinkRecordService {
         validate(recordDate, request);
         DrinkRecord saved = drinks.save(new DrinkRecord(habit, request.drinkType(), request.otherName(),
                 request.volumeMl(), request.recordedAt(), request.note()));
-        reportCache.evictUser(habit.getUser().getId());
+        cacheEvictor.evictAll(habit.getUser().getId());
         return toResponse(saved);
     }
 
@@ -53,7 +53,7 @@ public class DrinkRecordService {
         DrinkRecord drink = drinks.findByIdAndHabitRecord(id, habit).orElseThrow(() -> ApiException.notFound("饮品记录不存在"));
         validate(recordDate, request);
         drink.update(request.drinkType(), request.otherName(), request.volumeMl(), request.recordedAt(), request.note());
-        reportCache.evictUser(habit.getUser().getId());
+        cacheEvictor.evictAll(habit.getUser().getId());
         return toResponse(drink);
     }
 
@@ -61,7 +61,7 @@ public class DrinkRecordService {
     public void delete(LocalDate recordDate, Long id) {
         HabitRecord habit = requireHabit(recordDate);
         drinks.delete(drinks.findByIdAndHabitRecord(id, habit).orElseThrow(() -> ApiException.notFound("饮品记录不存在")));
-        reportCache.evictUser(habit.getUser().getId());
+        cacheEvictor.evictAll(habit.getUser().getId());
     }
 
     private HabitRecord requireHabit(LocalDate recordDate) {

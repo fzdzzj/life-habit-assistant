@@ -156,6 +156,16 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 
 > 取舍：流式只做对话，报告解读保持同步（整段 JSON 流式收益低）；流式状态机与事件协议参考 `D:\code\rag\back\RAG` 的 `RagStreamSessionManager`，仅借鉴不迁移实现。
 
+### AI 解读结构化输出与同周期结果缓存（Issue #84）
+
+| 优化项 | 问题 | 方案 | 落点 | 验证 |
+| --- | --- | --- | --- | --- |
+| 结构化输出 | 报告解读靠提示词“尽量输出 JSON”，服务端宽松解析，字段缺失填空，无 schema 校验 | `AiAdviceService` 改用 `chatStructured`（Spring AI `call().entity()`）严格转换 `AiAdviceContent`；缺失/解析失败/模型异常一律规则降级并保持配额语义；历史快照解析继续由 `AiAdviceContentParser` 负责；新增 `ai-advice-system-v2.txt`（显式 schema），prompt-version 默认 v1 可配 v2 | [AiAdviceService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AiAdviceService.java)、[ai-advice-system-v2.txt](../src/main/resources/prompts/ai-advice-system-v2.txt) | `AiAdviceServiceTest` 成功/失败/畸形降级；`AiAdviceContentParser` 快照回归 |
+| 同周期结果缓存 | 同一周期重复请求每次都重新调模型、扣配额、写历史 | 新增 `AiAdviceCache`（TTL/上限，默认 10m/128，`app.ai.advice.cache-ttl/cache-max-size`），只缓存 `source=AI` 成功结果；命中返回 `cached=true`，不调模型、不扣配额、不新增 history，配额快照实时返回；旧端点新增可选 `refresh` 参数强制重新生成 | [AiAdviceCache.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/AiAdviceCache.java)、[AiAdviceController.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/controller/AiAdviceController.java) | `AiAdviceCacheTest` 6 项；`AiAdviceServiceTest` 命中/刷新/失效/降级不缓存 |
+| 统一缓存失效 | 报告与 AI 解读各管各的，新增缓存要改所有写路径 | 抽取 `UserDataCache` 接口与 `UserCacheEvictor`：习惯/饮料/运动/睡眠/目标写路径统一 `evictAll`；AI 生成后只 `evictReports`（不误清新缓存） | [UserCacheEvictor.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/UserCacheEvictor.java) | `UserCacheEvictorTest` 2 项；写路径服务测试回归 |
+
+> 取舍：缓存只缓存 AI 成功结果，规则降级不缓存，避免 AI 恢复后被旧降级内容阻挡；命中缓存不新增 history，报告/导出快照继续引用首次生成记录。
+
 ## 三、关键取舍（防止“换个思路做坏”的约束）
 
 - **配额为什么用独立表而不是历史表计数**：历史表无法区分“调用失败（应计费）”和“未调用降级（不应计费）”；独立表只记录已发起的模型请求，语义干净。
@@ -207,3 +217,4 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 - [x] AI 多轮对话：`mvn test` 208 项通过（1 项 Testcontainers 跳过）；会话/消息用户隔离、多轮上下文限制、模型失败与配额耗尽降级、删除级联、共享配额与上下文脱敏全部覆盖；Flyway V11 真实 MySQL 迁移由 CI 的 Testcontainers 用例验证。
 - [x] 扩展性约束与交付验收：`mvn test` 216 项通过、0 失败（Docker 可用时 Testcontainers 两用例也执行并通过；无 Docker 时自动跳过）；架构约束 7 项、MySQL 全上下文启动回归、V1–V11 双跑全部验证；本地 MySQL80 冒烟认证/管理 API/任务生命周期/AI 对话全部走通，并修复 2 处迁移 DDL 与实体类型不一致（V8 LONGBLOB、V9 CHAR(64)）。
 - [x] AI 对话流式输出：`mvn test` 238 项通过、0 失败、0 跳过（含 Testcontainers 两用例）；SSE 事件协议、降级/取消/替换/断开语义、同会话单任务互斥、越权与异步鉴权恢复全部覆盖。
+- [x] AI 解读结构化输出与同周期结果缓存：`mvn test` 251 项通过、0 失败、0 跳过（含 Testcontainers 两用例）；结构化输出成功/畸形/字段缺失降级、缓存命中/刷新/写路径失效/降级不缓存全部覆盖；本地 MySQL 冒烟验证 AI 解读 `cached=false`、`refresh=true`、流式 SSE `event:fallback` 与取消 409（无 API key 时验证 fallback 路径，缓存命中语义由单元测试覆盖）。
