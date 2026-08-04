@@ -22,7 +22,7 @@ import java.util.Optional;
  * dependency (the same boundary documented for the in-memory rate limiter).
  */
 @Component
-public class ReportCache {
+public class ReportCache implements UserDataCache {
     private final Duration ttl;
     private final int maxSize;
     private final Map<String, Entry> entries;
@@ -58,6 +58,7 @@ public class ReportCache {
         }
     }
 
+    @Override
     public synchronized void evictUser(Long userId) {
         String prefix = userId + ":";
         entries.keySet().removeIf(key -> key.startsWith(prefix));

@@ -70,6 +70,8 @@ app:
       monthly-limit: ${AI_ADVICE_MONTHLY_LIMIT:30}
       timeout-seconds: ${AI_ADVICE_TIMEOUT_SECONDS:30}
       prompt-version: ${AI_ADVICE_PROMPT_VERSION:v1}
+      cache-ttl: ${AI_ADVICE_CACHE_TTL:10m}
+      cache-max-size: ${AI_ADVICE_CACHE_MAX_SIZE:128}
     conversation:
       enabled: ${AI_CONVERSATION_ENABLED:false}
       context-days: ${AI_CONVERSATION_CONTEXT_DAYS:7}

@@ -3,7 +3,8 @@ package com.fzdzzj.lifehabitassistant.server.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fzdzzj.lifehabitassistant.pojo.*;
-import com.fzdzzj.lifehabitassistant.config.ReportCache;
+import com.fzdzzj.lifehabitassistant.config.AiAdviceCache;
+import com.fzdzzj.lifehabitassistant.config.UserCacheEvictor;
 import com.fzdzzj.lifehabitassistant.server.dao.AiAdviceHistoryRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +17,7 @@ import java.time.YearMonth;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Explicit, user-triggered AI advice with deterministic fallback.
@@ -41,14 +43,15 @@ public class AiAdviceService {
     private final ObjectMapper objectMapper;
     private final CurrentUser currentUser;
     private final GoalService goals;
-    private final ReportCache reportCache;
+    private final UserCacheEvictor cacheEvictor;
+    private final AiAdviceCache aiAdviceCache;
 
     public AiAdviceService(HabitService habits, HealthStatisticsService statistics,
                            RuleBasedAdviceGenerator ruleAdvice, AiAdviceHistoryRepository historyRepository,
                            AiQuotaService quotaService, AiAdviceProperties properties,
                            AiSystemPromptLoader promptLoader, OpenAiChatClient chatClient,
                            AiAdviceContentParser contentParser, ObjectMapper objectMapper, CurrentUser currentUser,
-                           GoalService goals, ReportCache reportCache) {
+                           GoalService goals, UserCacheEvictor cacheEvictor, AiAdviceCache aiAdviceCache) {
         this.habits = habits;
         this.statistics = statistics;
         this.ruleAdvice = ruleAdvice;
@@ -61,11 +64,17 @@ public class AiAdviceService {
         this.objectMapper = objectMapper;
         this.currentUser = currentUser;
         this.goals = goals;
-        this.reportCache = reportCache;
+        this.cacheEvictor = cacheEvictor;
+        this.aiAdviceCache = aiAdviceCache;
     }
 
     @Transactional
     public AiAdviceDtos.AiAdviceResponse analysis(int days) {
+        return analysis(days, false);
+    }
+
+    @Transactional
+    public AiAdviceDtos.AiAdviceResponse analysis(int days, boolean refresh) {
         if (days < 1 || days > 366) {
             throw new IllegalArgumentException("days 必须在 1 到 366 之间");
         }
@@ -73,51 +82,85 @@ public class AiAdviceService {
         LocalDate start = end.minusDays(days - 1L);
         var effectiveGoals = goals.get();
         return generate(currentUser.require(), AiAdviceType.ANALYSIS, start, end, days,
-                statistics.summarize(habits.range(start, end), end, effectiveGoals), effectiveGoals);
+                statistics.summarize(habits.range(start, end), end, effectiveGoals), effectiveGoals, refresh);
     }
 
     @Transactional
     public AiAdviceDtos.AiAdviceResponse weekly(LocalDate anyDay) {
+        return weekly(anyDay, false);
+    }
+
+    @Transactional
+    public AiAdviceDtos.AiAdviceResponse weekly(LocalDate anyDay, boolean refresh) {
         LocalDate start = anyDay.with(DayOfWeek.MONDAY);
         LocalDate end = start.plusDays(6);
         var effectiveGoals = goals.get();
         return generate(currentUser.require(), AiAdviceType.WEEKLY_REPORT, start, end, 7,
-                statistics.summarize(habits.range(start, end), end, effectiveGoals), effectiveGoals);
+                statistics.summarize(habits.range(start, end), end, effectiveGoals), effectiveGoals, refresh);
     }
 
     @Transactional
     public AiAdviceDtos.AiAdviceResponse monthly(YearMonth month) {
+        return monthly(month, false);
+    }
+
+    @Transactional
+    public AiAdviceDtos.AiAdviceResponse monthly(YearMonth month, boolean refresh) {
         LocalDate start = month.atDay(1);
         LocalDate end = month.atEndOfMonth();
         int days = Math.toIntExact(end.toEpochDay() - start.toEpochDay() + 1L);
         var effectiveGoals = goals.get();
         return generate(currentUser.require(), AiAdviceType.MONTHLY_REPORT, start, end, days,
-                statistics.summarize(habits.range(start, end), end, effectiveGoals), effectiveGoals);
+                statistics.summarize(habits.range(start, end), end, effectiveGoals), effectiveGoals, refresh);
     }
 
     private AiAdviceDtos.AiAdviceResponse generate(User user, AiAdviceType type, LocalDate start, LocalDate end,
-                                                   int days, HealthStatistics summary, DailyGoals goals) {
+                                                   int days, HealthStatistics summary, DailyGoals goals,
+                                                   boolean refresh) {
+        if (!refresh) {
+            Optional<AiAdviceCache.CachedAdvice> cached = aiAdviceCache.get(user.getId(), type, start, end,
+                    properties.promptVersion());
+            if (cached.isPresent()) {
+                AiQuotaService.QuotaSnapshot quota = quotaService.usage(user);
+                AiAdviceCache.CachedAdvice hit = cached.get();
+                return new AiAdviceDtos.AiAdviceResponse(hit.source(), hit.content(), hit.historyId(),
+                        hit.createdAt(), quota.dailyUsed(), quota.dailyLimit(),
+                        quota.monthlyUsed(), quota.monthlyLimit(), true);
+            }
+        }
         AnalysisDtos.AnalysisResponse rule = ruleAdvice.generate(days, summary, goals);
+        AiAdviceDtos.AiAdviceResponse response;
         if (!eligible(properties, summary)) {
-            return persistAndRespond(user, type, start, end, AdviceSource.RULE_FALLBACK, toContent(rule),
+            response = persistAndRespond(user, type, start, end, AdviceSource.RULE_FALLBACK, toContent(rule),
                     null, false);
+        } else {
+            try {
+                quotaService.occupy(user);
+            } catch (AiQuotaService.QuotaExceededException ex) {
+                response = persistAndRespond(user, type, start, end, AdviceSource.RULE_FALLBACK, toContent(rule),
+                        null, false);
+                return response;
+            }
+            try {
+                AiAdviceDtos.AiAdviceContent content = chatClient.chatStructured(promptLoader.load(),
+                        userPrompt(days, summary, rule, goals), AiAdviceDtos.AiAdviceContent.class);
+                if (content == null) {
+                    throw new IllegalStateException("structured output is null");
+                }
+                response = persistAndRespond(user, type, start, end, AdviceSource.AI, content,
+                        properties.model(), true);
+            } catch (RuntimeException ex) {
+                log.warn("OpenAI advice failed for user {}: {}", user.getId(), ex.toString());
+                response = persistAndRespond(user, type, start, end, AdviceSource.RULE_FALLBACK, toContent(rule),
+                        properties.model(), true);
+            }
         }
-        try {
-            quotaService.occupy(user);
-        } catch (AiQuotaService.QuotaExceededException ex) {
-            return persistAndRespond(user, type, start, end, AdviceSource.RULE_FALLBACK, toContent(rule),
-                    null, false);
+        if (response.source() == AdviceSource.AI) {
+            aiAdviceCache.put(user.getId(), type, start, end, properties.promptVersion(),
+                    new AiAdviceCache.CachedAdvice(response.source(), response.content(),
+                            response.historyId(), response.createdAt()));
         }
-        try {
-            String raw = chatClient.chat(promptLoader.load(), userPrompt(days, summary, rule, goals));
-            AiAdviceDtos.AiAdviceContent content = contentParser.parse(raw);
-            return persistAndRespond(user, type, start, end, AdviceSource.AI, content,
-                    properties.model(), true);
-        } catch (RuntimeException ex) {
-            log.warn("OpenAI advice failed for user {}: {}", user.getId(), ex.toString());
-            return persistAndRespond(user, type, start, end, AdviceSource.RULE_FALLBACK, toContent(rule),
-                    properties.model(), true);
-        }
+        return response;
     }
 
     private AiAdviceDtos.AiAdviceResponse persistAndRespond(User user, AiAdviceType type, LocalDate start,
@@ -126,10 +169,10 @@ public class AiAdviceService {
                                                             boolean callCounted) {
         AiAdviceHistory saved = historyRepository.save(new AiAdviceHistory(user, type, start, end, source, modelName,
                 properties.promptVersion(), toJson(content), callCounted));
-        reportCache.evictUser(user.getId());
+        cacheEvictor.evictReports(user.getId());
         AiQuotaService.QuotaSnapshot quota = quotaService.usage(user);
         return new AiAdviceDtos.AiAdviceResponse(source, content, saved.getId(), saved.getCreatedAt(),
-                quota.dailyUsed(), quota.dailyLimit(), quota.monthlyUsed(), quota.monthlyLimit());
+                quota.dailyUsed(), quota.dailyLimit(), quota.monthlyUsed(), quota.monthlyLimit(), false);
     }
 
     private boolean eligible(AiAdviceProperties properties, HealthStatistics summary) {

@@ -17,7 +17,7 @@ public final class AiAdviceDtos {
 
     public record AiAdviceResponse(AdviceSource source, AiAdviceContent content, Long historyId,
                                    LocalDateTime createdAt, int dailyUsed, int dailyLimit,
-                                   int monthlyUsed, int monthlyLimit) {
+                                   int monthlyUsed, int monthlyLimit, boolean cached) {
     }
 
     /** Latest saved advice attached to a report export; null when the period has no saved advice. */

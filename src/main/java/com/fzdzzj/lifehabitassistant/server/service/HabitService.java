@@ -2,7 +2,7 @@ package com.fzdzzj.lifehabitassistant.server.service;
 
 import com.fzdzzj.lifehabitassistant.common.ApiException;
 import com.fzdzzj.lifehabitassistant.config.PaginationProperties;
-import com.fzdzzj.lifehabitassistant.config.ReportCache;
+import com.fzdzzj.lifehabitassistant.config.UserCacheEvictor;
 import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.HabitDtos;
 import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
@@ -27,16 +27,16 @@ public class HabitService {
     private final DrinkHealthRules drinkRules;
     private final PaginationProperties pagination;
     private final GoalService goals;
-    private final ReportCache reportCache;
+    private final UserCacheEvictor cacheEvictor;
 
     public HabitService(HabitRecordRepository records, CurrentUser currentUser, DrinkHealthRules drinkRules,
-                        PaginationProperties pagination, GoalService goals, ReportCache reportCache) {
+    PaginationProperties pagination, GoalService goals, UserCacheEvictor cacheEvictor) {
         this.records = records;
         this.currentUser = currentUser;
         this.drinkRules = drinkRules;
         this.pagination = pagination;
         this.goals = goals;
-        this.reportCache = reportCache;
+        this.cacheEvictor = cacheEvictor;
     }
 
     @Transactional
@@ -49,7 +49,7 @@ public class HabitService {
             // 并发请求同时通过“不存在”检查时，唯一约束会兜底：重查一次后按更新处理
             response = saveOrUpdate(user, request);
         }
-        reportCache.evictUser(user.getId());
+        cacheEvictor.evictAll(user.getId());
         return response;
     }
 
@@ -95,7 +95,7 @@ public class HabitService {
         User user = currentUser.require();
         HabitRecord record = records.findByUserAndRecordDate(user, date).orElseThrow(() -> ApiException.notFound("当天记录不存在"));
         records.delete(record);
-        reportCache.evictUser(user.getId());
+        cacheEvictor.evictAll(user.getId());
     }
 
     @Transactional(readOnly = true)

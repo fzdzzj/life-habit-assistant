@@ -1,7 +1,7 @@
 package com.fzdzzj.lifehabitassistant.server.service;
 
 import com.fzdzzj.lifehabitassistant.common.ApiException;
-import com.fzdzzj.lifehabitassistant.config.ReportCache;
+import com.fzdzzj.lifehabitassistant.config.UserCacheEvictor;
 import com.fzdzzj.lifehabitassistant.pojo.ExerciseSession;
 import com.fzdzzj.lifehabitassistant.pojo.ExerciseSessionDtos;
 import com.fzdzzj.lifehabitassistant.pojo.ExerciseType;
@@ -20,14 +20,14 @@ public class ExerciseSessionService {
     private final HabitRecordRepository habits;
     private final ExerciseSessionRepository sessions;
     private final CurrentUser currentUser;
-    private final ReportCache reportCache;
+    private final UserCacheEvictor cacheEvictor;
 
     public ExerciseSessionService(HabitRecordRepository habits, ExerciseSessionRepository sessions,
-                                  CurrentUser currentUser, ReportCache reportCache) {
+    CurrentUser currentUser, UserCacheEvictor cacheEvictor) {
         this.habits = habits;
         this.sessions = sessions;
         this.currentUser = currentUser;
-        this.reportCache = reportCache;
+        this.cacheEvictor = cacheEvictor;
     }
 
     @Transactional(readOnly = true)
@@ -42,7 +42,7 @@ public class ExerciseSessionService {
         ExerciseSession saved = sessions.save(new ExerciseSession(habit, request.exerciseType(), request.otherName(),
                 request.intensity(), request.durationMinutes(), request.startedAt(), request.distanceKm(),
                 request.caloriesKcal(), request.note()));
-        reportCache.evictUser(habit.getUser().getId());
+        cacheEvictor.evictAll(habit.getUser().getId());
         return toResponse(saved);
     }
 
@@ -52,7 +52,7 @@ public class ExerciseSessionService {
         ExerciseSession session = sessions.findByIdAndHabitRecord(id, habit).orElseThrow(() -> ApiException.notFound("运动记录不存在"));
         validate(recordDate, request);
         session.update(request.exerciseType(), request.otherName(), request.intensity(), request.durationMinutes(), request.startedAt(), request.distanceKm(), request.caloriesKcal(), request.note());
-        reportCache.evictUser(habit.getUser().getId());
+        cacheEvictor.evictAll(habit.getUser().getId());
         return toResponse(session);
     }
 
@@ -60,7 +60,7 @@ public class ExerciseSessionService {
     public void delete(LocalDate recordDate, Long id) {
         HabitRecord habit = requireHabit(recordDate);
         sessions.delete(sessions.findByIdAndHabitRecord(id, habit).orElseThrow(() -> ApiException.notFound("运动记录不存在")));
-        reportCache.evictUser(habit.getUser().getId());
+        cacheEvictor.evictAll(habit.getUser().getId());
     }
 
     private HabitRecord requireHabit(LocalDate recordDate) {

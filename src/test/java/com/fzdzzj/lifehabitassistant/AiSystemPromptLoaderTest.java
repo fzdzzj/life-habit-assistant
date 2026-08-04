@@ -4,6 +4,8 @@ import com.fzdzzj.lifehabitassistant.server.service.AiAdviceProperties;
 import com.fzdzzj.lifehabitassistant.server.service.AiSystemPromptLoader;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -42,6 +44,7 @@ class AiSystemPromptLoaderTest {
 
     private AiAdviceProperties properties(String version) {
         return new AiAdviceProperties(false, "sk-test", "gpt-demo",
-                "https://api.openai.com/v1", 3, 30, 30, version);
+                "https://api.openai.com/v1", 3, 30, 30, version,
+                Duration.ofMinutes(10), 128);
     }
 }

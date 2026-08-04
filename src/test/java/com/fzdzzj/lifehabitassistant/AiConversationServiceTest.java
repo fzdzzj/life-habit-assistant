@@ -77,7 +77,8 @@ class AiConversationServiceTest {
                         List.of("平均睡眠不足"), List.of("固定就寝时间")));
 
         aiProperties = new AiAdviceProperties(true, "sk-test", "gpt-demo",
-                "https://api.openai.com/v1", 3, 30, 30, "v1");
+                "https://api.openai.com/v1", 3, 30, 30, "v1",
+                java.time.Duration.ofMinutes(10), 128);
         conversationProperties = new AiConversationProperties(true, 7, 10, 2000, 300, "v1");
         service = service(aiProperties, conversationProperties);
     }

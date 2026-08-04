@@ -5,8 +5,10 @@ import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
 import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.User;
 import com.fzdzzj.lifehabitassistant.config.PaginationProperties;
+import com.fzdzzj.lifehabitassistant.config.AiAdviceCache;
 import com.fzdzzj.lifehabitassistant.config.ReportCache;
 import com.fzdzzj.lifehabitassistant.config.ReportProperties;
+import com.fzdzzj.lifehabitassistant.config.UserCacheEvictor;
 import com.fzdzzj.lifehabitassistant.server.dao.HabitRecordRepository;
 import com.fzdzzj.lifehabitassistant.server.service.CurrentUser;
 import com.fzdzzj.lifehabitassistant.server.service.GoalService;
@@ -116,7 +118,8 @@ class HabitServiceTest {
         verify(records, never()).findByUserAndRecordDateBetween(any(), any(), any(), any());
     }
 
-    private ReportCache cache() {
-        return new ReportCache(new ReportProperties(Duration.ofMinutes(10), 128));
+    private UserCacheEvictor cache() {
+        return new UserCacheEvictor(new ReportCache(new ReportProperties(Duration.ofMinutes(10), 128)),
+                mock(AiAdviceCache.class));
     }
 }
