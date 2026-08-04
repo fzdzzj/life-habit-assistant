@@ -2,6 +2,7 @@ package com.fzdzzj.lifehabitassistant.server.service;
 
 import com.fzdzzj.lifehabitassistant.common.ApiException;
 import com.fzdzzj.lifehabitassistant.config.PaginationProperties;
+import com.fzdzzj.lifehabitassistant.config.ReportCache;
 import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.HabitDtos;
 import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
@@ -26,25 +27,30 @@ public class HabitService {
     private final DrinkHealthRules drinkRules;
     private final PaginationProperties pagination;
     private final GoalService goals;
+    private final ReportCache reportCache;
 
     public HabitService(HabitRecordRepository records, CurrentUser currentUser, DrinkHealthRules drinkRules,
-                        PaginationProperties pagination, GoalService goals) {
+                        PaginationProperties pagination, GoalService goals, ReportCache reportCache) {
         this.records = records;
         this.currentUser = currentUser;
         this.drinkRules = drinkRules;
         this.pagination = pagination;
         this.goals = goals;
+        this.reportCache = reportCache;
     }
 
     @Transactional
     public HabitDtos.HabitResponse save(HabitDtos.HabitRequest request) {
         User user = currentUser.require();
+        HabitDtos.HabitResponse response;
         try {
-            return saveOrUpdate(user, request);
+            response = saveOrUpdate(user, request);
         } catch (DataIntegrityViolationException ex) {
             // 并发请求同时通过“不存在”检查时，唯一约束会兜底：重查一次后按更新处理
-            return saveOrUpdate(user, request);
+            response = saveOrUpdate(user, request);
         }
+        reportCache.evictUser(user.getId());
+        return response;
     }
 
     private HabitDtos.HabitResponse saveOrUpdate(User user, HabitDtos.HabitRequest request) {
@@ -86,13 +92,20 @@ public class HabitService {
 
     @Transactional
     public void delete(LocalDate date) {
-        HabitRecord record = records.findByUserAndRecordDate(currentUser.require(), date).orElseThrow(() -> ApiException.notFound("当天记录不存在"));
+        User user = currentUser.require();
+        HabitRecord record = records.findByUserAndRecordDate(user, date).orElseThrow(() -> ApiException.notFound("当天记录不存在"));
         records.delete(record);
+        reportCache.evictUser(user.getId());
     }
 
     @Transactional(readOnly = true)
     public List<HabitRecord> range(LocalDate start, LocalDate end) {
-        return records.findByUserAndRecordDateBetweenOrderByRecordDateAsc(currentUser.require(), start, end);
+        return range(currentUser.require(), start, end);
+    }
+
+    /** User-scoped range query that does not touch the SecurityContext (async exporter path). */
+    public List<HabitRecord> range(User user, LocalDate start, LocalDate end) {
+        return records.findByUserAndRecordDateBetweenOrderByRecordDateAsc(user, start, end);
     }
 
     public HabitDtos.HabitResponse toResponse(User user, HabitRecord r) {

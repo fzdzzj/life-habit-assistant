@@ -5,6 +5,8 @@ import com.fzdzzj.lifehabitassistant.pojo.HabitRecord;
 import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.User;
 import com.fzdzzj.lifehabitassistant.config.PaginationProperties;
+import com.fzdzzj.lifehabitassistant.config.ReportCache;
+import com.fzdzzj.lifehabitassistant.config.ReportProperties;
 import com.fzdzzj.lifehabitassistant.server.dao.HabitRecordRepository;
 import com.fzdzzj.lifehabitassistant.server.service.CurrentUser;
 import com.fzdzzj.lifehabitassistant.server.service.GoalService;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDate;
+import java.time.Duration;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -45,7 +48,7 @@ class HabitServiceTest {
         when(records.save(any(HabitRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         HabitDtos.HabitResponse response = new HabitService(records, currentUser, TestDrinkRules.defaults(),
-                new PaginationProperties(10000), goals()).save(request);
+                new PaginationProperties(10000), goals(), cache()).save(request);
 
         ArgumentCaptor<HabitRecord> captor = ArgumentCaptor.forClass(HabitRecord.class);
         verify(records).save(captor.capture());
@@ -68,7 +71,7 @@ class HabitServiceTest {
         when(records.save(existing)).thenReturn(existing);
 
         HabitDtos.HabitResponse response = new HabitService(records, currentUser, TestDrinkRules.defaults(),
-                new PaginationProperties(10000), goals()).save(request);
+                new PaginationProperties(10000), goals(), cache()).save(request);
 
         verify(records).save(existing);
         assertEquals(480, response.sleepMinutes());
@@ -93,7 +96,7 @@ class HabitServiceTest {
                 .thenReturn(existing);
 
         HabitDtos.HabitResponse response = new HabitService(records, currentUser, TestDrinkRules.defaults(),
-                new PaginationProperties(10000), goals()).save(request);
+                new PaginationProperties(10000), goals(), cache()).save(request);
 
         verify(records, times(2)).findByUserAndRecordDate(user, date);
         assertEquals(5, response.dietScore());
@@ -107,9 +110,13 @@ class HabitServiceTest {
         User user = new User("demo", "hash");
         when(currentUser.require()).thenReturn(user);
         HabitService service = new HabitService(records, currentUser, TestDrinkRules.defaults(),
-                new PaginationProperties(10000), goals());
+                new PaginationProperties(10000), goals(), cache());
 
         assertThrows(IllegalArgumentException.class, () -> service.list(null, null, 100, 100));
         verify(records, never()).findByUserAndRecordDateBetween(any(), any(), any(), any());
+    }
+
+    private ReportCache cache() {
+        return new ReportCache(new ReportProperties(Duration.ofMinutes(10), 128));
     }
 }

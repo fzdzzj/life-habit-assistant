@@ -18,7 +18,7 @@ config/   JWT、Spring Security 与演示数据配置
 - 密码使用 BCrypt 哈希；JWT 解析后的当前用户决定每一条查询和写入的归属。
 - 同一用户每天只有一条记录（`user_id + record_date` 唯一约束）；重复提交更新原记录。
 - 每日健康目标可按用户自定义（`daily_goals` 表）；未设置时回落到全局阈值，统计达标、规则建议与 AI 提示词统一读取生效目标。
-- 周报、月报按请求即时聚合，不保存冗余报告快照。
+- 周报、月报按请求即时聚合，不保存冗余报告快照；同一用户同周期在 TTL 内复用内存缓存，习惯/目标/AI 解读变化后立即失效。
 
 ## 启动
 
@@ -74,6 +74,9 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 | 报告 | `GET /api/reports/monthly?month=YYYY-MM` | 自然月报告 |
 | 导出 | `GET /api/reports/weekly/export?week=...&format=xlsx|pdf` | 下载周报 |
 | 导出 | `GET /api/reports/monthly/export?month=...&format=xlsx|pdf` | 下载月报 |
+| 异步导出 | `POST /api/export-tasks?type=weekly|monthly|custom&format=xlsx|pdf` | 创建导出任务，返回 202 与任务 ID；custom 需 `start`/`end`，最长 5 年 |
+| 异步导出 | `GET /api/export-tasks/{id}` | 轮询任务状态（PENDING/RUNNING/SUCCEEDED/FAILED） |
+| 异步导出 | `GET /api/export-tasks/{id}/download` | 任务成功后下载文件；未完成或失败返回统一错误 |
 
 `POST /api/habits` 请求示例：
 
@@ -86,6 +89,10 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 ```
 
 `recordDate` 是当天归属日。先创建每日记录，再通过独立接口维护睡眠片段、运动明细和饮品明细。饮品使用 `GET/POST /api/habits/{date}/drink-records`、`PUT/DELETE /api/habits/{date}/drink-records/{id}`；`hydrationMl` 是按饮品类型计算的有效补水，不再把所有饮料简单等同于饮水。详见 [饮品模块设计](docs/drink-records.md)。
+
+### 异步导出任务
+
+大区间导出（如一年以上）不再同步阻塞请求：`POST /api/export-tasks` 创建任务后立即返回任务 ID，前端轮询 `GET /api/export-tasks/{id}` 直到 `SUCCEEDED`，再调用 `/download` 获取文件。任务按用户隔离，单用户最多 5 个待处理任务（`app.export.max-pending-per-user` 可调）；生成失败时状态为 `FAILED` 并附错误原因。周报/月报仍保留原有同步导出接口。
 
 ### 自定义每日目标
 
@@ -119,6 +126,8 @@ AI 建议默认关闭，且只在用户显式调用 `POST /api/ai/...` 时触发
 - 记录：跨午夜睡眠、同日更新且归属当前用户。
 - 分析：均值、总运动、连续记录、阈值达标。
 - 报告：自然周、闰年月边界、Excel 工作表和 PDF 可打开性。
+- 报表缓存：TTL 命中/过期、按用户失效、容量上限，以及修改记录后周报立即反映新值。
+- 异步导出：任务创建、区间校验、待处理上限、用户隔离、状态流转（含失败原因）与 xlsx/pdf 下载。
 - 每日目标：默认回落全局阈值、新建/更新同一行、重置、参数校验、用户隔离，以及自定义目标改变趋势达标与规则建议。
 - AI 建议：解析容错、禁用/无数据/供应商失败/日额度/月额度的降级、按用户计费与隔离、报告导出只读取已保存建议。
 - 正确性：并发重复提交的唯一约束重试、AI 配额表行级原子扣减与额度上限、异常兜底日志。

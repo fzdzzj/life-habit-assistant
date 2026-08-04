@@ -79,6 +79,13 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 | --- | --- | --- | --- | --- |
 | Spring Boot 升级 | Boot 3.3.3 无法使用 Spring AI starter（2.0 需 Boot 4，1.0/1.1 需 Boot 3.4+） | 升级 Boot 3.5.16、springdoc 2.8.9，引入 `spring-ai-starter-model-openai` 1.1.8；`RestClientOpenAiChatClient` 替换为 `SpringAiOpenAiChatClient`，服务层与测试接口不变 | [pom.xml](../pom.xml)、[AiAdviceConfig.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/AiAdviceConfig.java)、[SpringAiOpenAiChatClient.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/SpringAiOpenAiChatClient.java)、[application.yml](../src/main/resources/application.yml) | `mvn test` 100 项 0 失败 0 错误（1 项 Testcontainers 跳过）；新增 `SpringAiOpenAiChatClientTest` 3 项；无 API key/model 时上下文可启动，AI 降级路径回归通过 |
 
+### 报表缓存与异步导出（Issue #66）
+
+| 优化项 | 问题 | 方案 | 落点 | 验证 |
+| --- | --- | --- | --- | --- |
+| 周期报告 TTL 缓存 | 周报/月报每次请求全量重算，重复查看成本高 | 用户 + 类型 + 周期为 key 的内存缓存（TTL 默认 10 分钟、上限 128 条，可配置）；习惯/明细/目标/AI 解读写入后主动 `evictUser`，缓存永不比数据旧 | [ReportCache.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/ReportCache.java)、[ReportProperties.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/ReportProperties.java)、[ReportService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/ReportService.java) | `ReportCacheTest` 5 项（命中、TTL 过期、按用户失效、LRU 上限）；`ReportCacheHttpIntegrationTest` 验证改数据后周报立即反映新值；`ReportServiceTest` 验证第二次请求不再重算 |
+| 大区间异步导出 | 同步导出在请求线程生成大文件，耗时不可控 | 新增 `export_tasks` 表（V8）与 `POST/GET /api/export-tasks`、`GET /{id}/download`；自定义区间最长 5 年；`@Async` 线程池生成，`PENDING → RUNNING → SUCCEEDED/FAILED` 原子流转；按用户隔离，单用户最多 5 个待处理任务 | [ExportTask.java](../src/main/java/com/fzdzzj/lifehabitassistant/pojo/ExportTask.java)、[ExportTaskRepository.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/dao/ExportTaskRepository.java)、[ExportTaskService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/ExportTaskService.java)、[ExportTaskWorker.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/ExportTaskWorker.java)、[ExportTaskController.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/controller/ExportTaskController.java) | `ExportTaskServiceTest` 5 项（创建/周边界/区间校验/待处理上限/用户隔离/未完成与完成下载）；`ExportTaskWorkerTest` 3 项（重复认领跳过、成功落文件、失败记原因）；`ExportTaskHttpIntegrationTest` 5 项（401、custom 下载 xlsx、monthly 下载 pdf、用户隔离、非法区间 400） |
+
 ## 三、关键取舍（防止“换个思路做坏”的约束）
 
 - **配额为什么用独立表而不是历史表计数**：历史表无法区分“调用失败（应计费）”和“未调用降级（不应计费）”；独立表只记录已发起的模型请求，语义干净。
@@ -108,7 +115,6 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 | --- | --- |
 | 自定义每日目标 | 已完成（Issue #60，见二） |
 | 前端 | ECharts 消费 `/api/trends`，报告页与 AI 解读展示 |
-| 报表缓存/异步导出 | 周期报告 TTL 缓存；大区间导出任务表异步生成 |
 
 ## 五、明确不做（防跑偏清单）
 
@@ -127,3 +133,4 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 - [x] Flyway V6 建表（H2 已验证 SQL 语义；真实 MySQL 冒烟列入 P1）。
 - [x] 本地 MySQL 冒烟：启动应用 → 注册登录 → 录数据 → 趋势/报告 → 导出 → AI 降级路径可走通（2026-08-04 实测通过，证据见二）。
 - [x] 自定义每日目标：`mvn test` 96 项通过（1 项 Testcontainers 跳过）；目标查询/upsert/重置/校验/隔离与自定义目标改变达标、建议全部覆盖。
+- [x] 报表缓存与异步导出：`mvn test` 122 项通过（1 项 Testcontainers 跳过）；缓存命中/失效、导出任务状态流转、用户隔离、HTTP 轮询与下载全覆盖；Flyway V8 真实 MySQL 迁移由 CI 的 Testcontainers 用例验证。

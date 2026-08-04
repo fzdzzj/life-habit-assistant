@@ -41,6 +41,12 @@ app:
       login-cooldown: 15m
   pagination:
     max-offset: 10000
+  report:
+    cache-ttl: 10m
+    cache-max-size: 128
+  export:
+    max-days: 1826
+    max-pending-per-user: 5
   health:
     minimum-sleep-minutes: 420
     maximum-sleep-minutes: 540

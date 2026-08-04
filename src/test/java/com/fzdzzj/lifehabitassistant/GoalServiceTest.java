@@ -4,6 +4,8 @@ import com.fzdzzj.lifehabitassistant.pojo.DailyGoal;
 import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.GoalDtos;
 import com.fzdzzj.lifehabitassistant.pojo.User;
+import com.fzdzzj.lifehabitassistant.config.ReportCache;
+import com.fzdzzj.lifehabitassistant.config.ReportProperties;
 import com.fzdzzj.lifehabitassistant.server.dao.DailyGoalRepository;
 import com.fzdzzj.lifehabitassistant.server.service.CurrentUser;
 import com.fzdzzj.lifehabitassistant.server.service.GoalService;
@@ -12,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.Optional;
+import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -97,7 +100,8 @@ class GoalServiceTest {
     }
 
     private GoalService service(DailyGoalRepository repository, CurrentUser currentUser) {
-        return new GoalService(repository, currentUser, new HealthThresholds(420, 540, 1500, 30, 3));
+        return new GoalService(repository, currentUser, new HealthThresholds(420, 540, 1500, 30, 3),
+                new ReportCache(new ReportProperties(Duration.ofMinutes(10), 128)));
     }
 
     private GoalDtos.GoalRequest request(DailyGoals goals) {
