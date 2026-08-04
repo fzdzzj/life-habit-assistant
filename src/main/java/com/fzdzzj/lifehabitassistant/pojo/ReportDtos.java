@@ -14,6 +14,7 @@ public final class ReportDtos {
     public record ReportResponse(String type, LocalDate periodStart, LocalDate periodEnd, int recordCount,
                                  double averageSleepHours, double averageDietScore, int totalExerciseMinutes,
                                  double averageHydrationMl, int totalRiskDrinkVolumeMl, double achievementRate,
+                                 DailyGoals goals,
                                  List<AnalysisDtos.DailyTrend> dailyTrends, List<WeekSummary> weeklySummaries,
                                  List<String> risks, List<String> suggestions,
                                  AiAdviceDtos.AdviceSnapshot aiAdvice) {

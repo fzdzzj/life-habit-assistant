@@ -58,7 +58,7 @@ public class ReportService {
         var analysis = advice.generate(days, summary, effectiveGoals);
         return new ReportDtos.ReportResponse(type, start, end, summary.recordCount(), summary.averageSleepHours(),
                 summary.averageDietScore(), summary.totalExerciseMinutes(), summary.averageHydrationMl(),
-                summary.totalRiskDrinkVolumeMl(), achievementRate(summary),
+                summary.totalRiskDrinkVolumeMl(), achievementRate(summary), effectiveGoals,
                 summary.dailyStatistics().stream().map(this::daily).toList(), weekly(records),
                 analysis.risks(), analysis.suggestions(), latestSavedAdvice(type, start, end));
     }

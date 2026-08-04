@@ -48,6 +48,7 @@ class ReportServiceTest {
 
         assertEquals(LocalDate.of(2026, 7, 13), report.periodStart());
         assertEquals(LocalDate.of(2026, 7, 19), report.periodEnd());
+        assertEquals(DEFAULT_GOALS, report.goals());
         verify(habits).range(eq(LocalDate.of(2026, 7, 13)), eq(LocalDate.of(2026, 7, 19)));
     }
 
