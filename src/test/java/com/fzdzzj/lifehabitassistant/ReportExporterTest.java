@@ -3,6 +3,7 @@ package com.fzdzzj.lifehabitassistant;
 import com.fzdzzj.lifehabitassistant.pojo.AnalysisDtos;
 import com.fzdzzj.lifehabitassistant.pojo.AiAdviceDtos;
 import com.fzdzzj.lifehabitassistant.pojo.AdviceSource;
+import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.ExerciseType;
 import com.fzdzzj.lifehabitassistant.pojo.ReportDtos;
 import com.fzdzzj.lifehabitassistant.server.service.ReportExporter;
@@ -19,12 +20,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ReportExporterTest {
+    private static final DailyGoals GOALS = new DailyGoals(450, 540, 2000, 30, 3);
+
     @Test
     void exportsDetailedTrendColumnsInReadableExcelAndPdf() throws Exception {
         var trend = new AnalysisDtos.DailyTrend(LocalDate.now(), 7.5, 4, 30, 1600, 0, true,
                 7.0, 0.5, 60, Map.of(ExerciseType.RUN, 30));
         var report = new ReportDtos.ReportResponse("weekly", LocalDate.now(), LocalDate.now(), 1, 7.5, 4,
-                30, 1600, 0, 100, List.of(trend), List.of(), List.of(), List.of("保持习惯"), null);
+                30, 1600, 0, 100, GOALS, List.of(trend), List.of(), List.of(), List.of("保持习惯"), null);
         var exporter = new ReportExporter();
         byte[] xlsx = exporter.xlsx(report);
         byte[] pdf = exporter.pdf(report);
@@ -34,6 +37,12 @@ class ReportExporterTest {
             var trends = workbook.getSheet("Daily trends");
             assertEquals("Night sleep (h)", trends.getRow(0).getCell(2).getStringCellValue());
             assertEquals("RUN: 30 min", trends.getRow(1).getCell(7).getStringCellValue());
+            assertEquals("目标 vs 实际", trends.getRow(0).getCell(11).getStringCellValue());
+            String goalVsActual = trends.getRow(1).getCell(11).getStringCellValue();
+            assertTrue(goalVsActual.contains("睡眠 7.5h/7.5~9h"));
+            assertTrue(goalVsActual.contains("运动 30min/30min"));
+            assertTrue(goalVsActual.contains("补水 1600ml/2000ml"));
+            assertTrue(goalVsActual.contains("饮食 4分/3分"));
             assertTrue(workbook.getSheet("Risks and advice").getLastRowNum() >= 1);
             assertEquals("AI advice", workbook.getSheet("AI advice").getSheetName());
         }
@@ -51,7 +60,7 @@ class ReportExporterTest {
         var snapshot = new AiAdviceDtos.AdviceSnapshot(1L, AdviceSource.AI, content,
                 LocalDate.now().atStartOfDay());
         var report = new ReportDtos.ReportResponse("weekly", LocalDate.now(), LocalDate.now(), 1, 7.5, 4,
-                30, 1600, 0, 100, List.of(trend), List.of(), List.of(), List.of(), snapshot);
+                30, 1600, 0, 100, GOALS, List.of(trend), List.of(), List.of(), List.of(), snapshot);
         var exporter = new ReportExporter();
 
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(exporter.xlsx(report)))) {

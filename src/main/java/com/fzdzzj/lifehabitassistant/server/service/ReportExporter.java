@@ -1,7 +1,10 @@
 package com.fzdzzj.lifehabitassistant.server.service;
 
+import com.fzdzzj.lifehabitassistant.pojo.AnalysisDtos;
+import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.ReportDtos;
 import com.lowagie.text.*;
+import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import com.lowagie.text.pdf.BaseFont;
@@ -29,12 +32,20 @@ public class ReportExporter {
             Sheet trends = book.createSheet("Daily trends");
             row(trends, 0, header, "Date", "Sleep (h)", "Night sleep (h)", "Nap sleep (h)", "Diet score",
                     "Exercise (min)", "Moderate equivalent (min)", "Exercise types", "Hydration (ml)",
-                    "Risk drinks (ml)", "Achieved");
+                    "Risk drinks (ml)", "Achieved", "目标 vs 实际");
+            int goalColumn = 11;
+            CellStyle wrap = book.createCellStyle();
+            wrap.setWrapText(true);
             int i = 1;
-            for (var d : report.dailyTrends())
+            for (var d : report.dailyTrends()) {
                 row(trends, i++, null, d.date(), d.sleepHours(), d.nightSleepHours(), d.napSleepHours(), d.dietScore(),
                         d.exerciseMinutes(), d.moderateEquivalentExerciseMinutes(), formatExerciseTypes(d), d.hydrationMl(),
                         d.riskDrinkVolumeMl(), d.achieved() ? "Yes" : "No");
+                Cell goalCell = trends.getRow(i - 1).createCell(goalColumn);
+                goalCell.setCellValue(String.join("\n", goalVsActual(d, report.goals())));
+                goalCell.setCellStyle(wrap);
+                trends.getRow(i - 1).setHeight((short) 800);
+            }
             Sheet weekly = book.createSheet("Weekly summaries");
             row(weekly, 0, header, "Week start", "Avg sleep (h)", "Exercise (min)", "Avg hydration (ml)", "Risk drinks (ml)");
             i = 1;
@@ -64,7 +75,9 @@ public class ReportExporter {
                 row(aiAdvice, i++, null, "Disclaimer", content.disclaimer());
             }
             for (Sheet s : java.util.List.of(summary, trends, weekly, advice, aiAdvice))
-                for (int c = 0; c < s.getRow(0).getLastCellNum(); c++) s.autoSizeColumn(c);
+                for (int c = 0; c < s.getRow(0).getLastCellNum(); c++)
+                    if (!(s == trends && c == goalColumn)) s.autoSizeColumn(c);
+            trends.setColumnWidth(goalColumn, 22 * 256);
             book.write(out);
             return out.toByteArray();
         } catch (IOException e) {
@@ -84,9 +97,10 @@ public class ReportExporter {
             doc.add(new Paragraph("Records: " + r.recordCount() + " | Avg sleep: " + r.averageSleepHours() + " h | Avg diet: " + r.averageDietScore() + " | Exercise: " + r.totalExerciseMinutes() + " min | Avg hydration: " + r.averageHydrationMl() + " ml | Risk drinks: " + r.totalRiskDrinkVolumeMl() + " ml | Achievement: " + r.achievementRate() + "%", normal));
             doc.add(Chunk.NEWLINE);
             doc.add(new Paragraph("Daily trends", title));
-            PdfPTable table = new PdfPTable(11);
-            for (String h : new String[]{"Date", "Sleep", "Night", "Nap", "Diet", "Exercise", "Equivalent", "Types", "Hydration", "Risk drinks", "Achieved"})
+            PdfPTable table = new PdfPTable(12);
+            for (String h : new String[]{"Date", "Sleep", "Night", "Nap", "Diet", "Exercise", "Equivalent", "Types", "Hydration", "Risk drinks", "Achieved", "目标 vs 实际"})
                 table.addCell(new Phrase(h, normal));
+            com.lowagie.text.Font small = new com.lowagie.text.Font(baseFont, 8);
             for (var d : r.dailyTrends()) {
                 table.addCell(d.date().toString());
                 table.addCell(d.sleepHours() + " h");
@@ -99,6 +113,12 @@ public class ReportExporter {
                 table.addCell(d.hydrationMl() + " ml");
                 table.addCell(d.riskDrinkVolumeMl() + " ml");
                 table.addCell(d.achieved() ? "Yes" : "No");
+                PdfPCell goalCell = new PdfPCell();
+                goalCell.setPadding(2);
+                for (String line : goalVsActual(d, r.goals())) {
+                    goalCell.addElement(new Paragraph(line, small));
+                }
+                table.addCell(goalCell);
             }
             doc.add(table);
             if (!r.weeklySummaries().isEmpty()) {
@@ -163,5 +183,23 @@ public class ReportExporter {
         return dailyTrend.exerciseMinutesByType().entrySet().stream()
                 .map(entry -> entry.getKey().name() + ": " + entry.getValue() + " min")
                 .collect(java.util.stream.Collectors.joining("; "));
+    }
+
+    private java.util.List<String> goalVsActual(AnalysisDtos.DailyTrend dailyTrend, DailyGoals goals) {
+        return java.util.List.of(
+                String.format("睡眠 %.1fh/%s", dailyTrend.sleepHours(), sleepGoalRange(goals)),
+                String.format("运动 %dmin/%dmin", dailyTrend.exerciseMinutes(), goals.minimumExerciseMinutes()),
+                String.format("补水 %dml/%dml", dailyTrend.hydrationMl(), goals.minimumHydrationMl()),
+                String.format("饮食 %d分/%d分", dailyTrend.dietScore(), goals.minimumDietScore()));
+    }
+
+    private String sleepGoalRange(DailyGoals goals) {
+        String min = formatHours(goals.minimumSleepMinutes());
+        String max = formatHours(goals.maximumSleepMinutes());
+        return min.equals(max) ? min + "h" : min + "~" + max + "h";
+    }
+
+    private String formatHours(int minutes) {
+        return minutes % 60 == 0 ? String.valueOf(minutes / 60) : String.format("%.1f", minutes / 60d);
     }
 }
