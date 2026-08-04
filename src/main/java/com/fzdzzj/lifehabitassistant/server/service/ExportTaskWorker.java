@@ -53,12 +53,16 @@ public class ExportTaskWorker {
             String extension = task.getFormat() == ExportFormat.XLSX ? "xlsx" : "pdf";
             String fileName = "life-habit-" + task.getReportType().name().toLowerCase() + "-"
                     + task.getPeriodStart() + "_" + task.getPeriodEnd() + "." + extension;
-            task.succeed(bytes, fileName);
-            tasks.save(task);
+            int saved = tasks.markSucceeded(taskId, fileName, bytes, LocalDateTime.now());
+            if (saved != 1) {
+                log.info("Export task {} was cancelled before the file could be persisted", taskId);
+            }
         } catch (Exception ex) {
             log.error("Export task {} failed", taskId, ex);
-            task.fail(truncate(ex.getMessage()));
-            tasks.save(task);
+            int saved = tasks.markFailed(taskId, truncate(ex.getMessage()), LocalDateTime.now());
+            if (saved != 1) {
+                log.info("Export task {} changed state while the worker was failing; result not persisted", taskId);
+            }
         }
     }
 

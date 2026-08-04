@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * one user from flooding the single-instance thread pool.
  */
 @ConfigurationProperties(prefix = "app.export")
-public record ExportProperties(int maxDays, int maxPendingPerUser) {
+public record ExportProperties(int maxDays, int maxPendingPerUser, int retentionDays) {
 
     public ExportProperties {
         if (maxDays < 1) {
@@ -16,6 +16,9 @@ public record ExportProperties(int maxDays, int maxPendingPerUser) {
         }
         if (maxPendingPerUser < 1) {
             throw new IllegalArgumentException("app.export.max-pending-per-user must be positive");
+        }
+        if (retentionDays < 1) {
+            throw new IllegalArgumentException("app.export.retention-days must be positive");
         }
     }
 }

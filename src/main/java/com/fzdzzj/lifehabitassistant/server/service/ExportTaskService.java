@@ -2,32 +2,50 @@ package com.fzdzzj.lifehabitassistant.server.service;
 
 import com.fzdzzj.lifehabitassistant.common.ApiException;
 import com.fzdzzj.lifehabitassistant.config.ExportProperties;
+import com.fzdzzj.lifehabitassistant.config.PaginationProperties;
 import com.fzdzzj.lifehabitassistant.pojo.ExportFormat;
 import com.fzdzzj.lifehabitassistant.pojo.ExportReportType;
 import com.fzdzzj.lifehabitassistant.pojo.ExportTask;
 import com.fzdzzj.lifehabitassistant.pojo.ExportTaskDtos;
 import com.fzdzzj.lifehabitassistant.pojo.ExportTaskStatus;
+import com.fzdzzj.lifehabitassistant.pojo.PageResponse;
 import com.fzdzzj.lifehabitassistant.pojo.User;
 import com.fzdzzj.lifehabitassistant.server.dao.ExportTaskRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 
 @Service
 public class ExportTaskService {
+    private static final Logger log = LoggerFactory.getLogger(ExportTaskService.class);
+    private static final int CLEANUP_BATCH_SIZE = 100;
+
     private final ExportTaskRepository tasks;
     private final ExportTaskWorker worker;
     private final ExportProperties properties;
+    private final PaginationProperties pagination;
     private final CurrentUser currentUser;
 
     public ExportTaskService(ExportTaskRepository tasks, ExportTaskWorker worker, ExportProperties properties,
-                             CurrentUser currentUser) {
+                             PaginationProperties pagination, CurrentUser currentUser) {
         this.tasks = tasks;
         this.worker = worker;
         this.properties = properties;
+        this.pagination = pagination;
         this.currentUser = currentUser;
     }
 
@@ -48,10 +66,78 @@ public class ExportTaskService {
         return toResponse(requireOwned(id));
     }
 
+    @Transactional(readOnly = true)
+    public PageResponse<ExportTaskDtos.ExportTaskResponse> list(String status, int page, int size) {
+        User user = currentUser.require();
+        long offset = (long) page * size;
+        if (offset >= pagination.maxOffset()) {
+            throw new IllegalArgumentException("页码过深（offset 不得超过 " + pagination.maxOffset() + "）");
+        }
+        PageRequest pageRequest = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        Page<ExportTask> result = status == null
+                ? tasks.findByUserId(user.getId(), pageRequest)
+                : tasks.findByUserIdAndStatus(user.getId(), parseStatus(status), pageRequest);
+        return PageResponse.from(result.map(this::toResponse));
+    }
+
+    @Transactional
+    public ExportTaskDtos.ExportTaskResponse cancel(Long id) {
+        Long userId = currentUser.require().getId();
+        if (tasks.markCancelled(id, userId, LocalDateTime.now()) == 1) {
+            return toResponse(requireOwned(id));
+        }
+        requireOwned(id);
+        throw ApiException.conflict("任务已结束，无法取消");
+    }
+
+    /**
+     * No surrounding transaction: markRetried commits inside the repository
+     * call so the async worker submitted below observes the PENDING state
+     * (same pattern as create).
+     */
+    public ExportTaskDtos.ExportTaskResponse retry(Long id) {
+        Long userId = currentUser.require().getId();
+        if (tasks.countByUserIdAndStatus(userId, ExportTaskStatus.PENDING) >= properties.maxPendingPerUser()) {
+            throw ApiException.tooManyRequests("待处理导出任务过多，请等待现有任务完成后再试");
+        }
+        if (tasks.markRetried(id, userId) != 1) {
+            requireOwned(id);
+            throw ApiException.conflict("仅失败任务可以重试");
+        }
+        worker.generate(id);
+        return toResponse(requireOwned(id));
+    }
+
+    /**
+     * Deletes SUCCEEDED tasks older than the configured retention window
+     * together with their stored files (file content lives in the row).
+     * Runs daily; also directly callable from tests.
+     */
+    @Scheduled(cron = "${app.export.cleanup-cron:0 0 3 * * *}")
+    @Transactional
+    public void cleanupExpired() {
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(properties.retentionDays());
+        while (true) {
+            List<ExportTask> batch = tasks.findByStatusAndCreatedAtBefore(
+                    ExportTaskStatus.SUCCEEDED, cutoff, PageRequest.of(0, CLEANUP_BATCH_SIZE));
+            if (batch.isEmpty()) {
+                return;
+            }
+            for (ExportTask task : batch) {
+                log.info("Cleaning up expired export task id={} fileName={} createdAt={}",
+                        task.getId(), task.getFileName(), task.getCreatedAt());
+            }
+            tasks.deleteAllByIdInBatch(batch.stream().map(ExportTask::getId).toList());
+        }
+    }
+
     public ExportFile file(Long id) {
         ExportTask task = requireOwned(id);
         if (task.getStatus() == ExportTaskStatus.SUCCEEDED) {
             return new ExportFile(task.getFileName(), task.getFileContent());
+        }
+        if (task.getStatus() == ExportTaskStatus.CANCELLED) {
+            throw ApiException.conflict("导出任务已取消");
         }
         if (task.getStatus() == ExportTaskStatus.FAILED) {
             String reason = task.getErrorMessage() == null ? "未知错误" : task.getErrorMessage();
@@ -63,6 +149,15 @@ public class ExportTaskService {
     private ExportTask requireOwned(Long id) {
         return tasks.findByIdAndUserId(id, currentUser.require().getId())
                 .orElseThrow(() -> ApiException.notFound("导出任务不存在"));
+    }
+
+    private ExportTaskStatus parseStatus(String status) {
+        try {
+            return ExportTaskStatus.valueOf(status.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("status 仅支持 "
+                    + Arrays.toString(ExportTaskStatus.values()).toLowerCase(Locale.ROOT));
+        }
     }
 
     private LocalDate[] periodOf(ExportReportType type, LocalDate week, YearMonth month,

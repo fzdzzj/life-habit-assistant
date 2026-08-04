@@ -4,5 +4,6 @@ public enum ExportTaskStatus {
     PENDING,
     RUNNING,
     SUCCEEDED,
-    FAILED
+    FAILED,
+    CANCELLED
 }

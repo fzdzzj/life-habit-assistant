@@ -5,7 +5,6 @@ import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.ExportFormat;
 import com.fzdzzj.lifehabitassistant.pojo.ExportReportType;
 import com.fzdzzj.lifehabitassistant.pojo.ExportTask;
-import com.fzdzzj.lifehabitassistant.pojo.ExportTaskStatus;
 import com.fzdzzj.lifehabitassistant.pojo.ReportDtos;
 import com.fzdzzj.lifehabitassistant.pojo.User;
 import com.fzdzzj.lifehabitassistant.server.dao.ExportTaskRepository;
@@ -18,8 +17,6 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -58,14 +55,15 @@ class ExportTaskWorkerTest {
         when(tasks.findWithUserById(1L)).thenReturn(Optional.of(task));
         when(reports.customForUser(user, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 6, 30))).thenReturn(report);
         when(exporter.xlsx(report)).thenReturn(new byte[]{1, 2, 3});
+        when(tasks.markSucceeded(eq(1L), eq("life-habit-custom-2026-01-01_2026-06-30.xlsx"),
+                eq(new byte[]{1, 2, 3}), any())).thenReturn(1);
         ExportTaskWorker worker = worker(tasks, reports, exporter);
 
         worker.generate(1L);
 
-        assertEquals(ExportTaskStatus.SUCCEEDED, task.getStatus());
-        assertEquals("life-habit-custom-2026-01-01_2026-06-30.xlsx", task.getFileName());
-        assertArrayEquals(new byte[]{1, 2, 3}, task.getFileContent());
-        verify(tasks).save(task);
+        verify(tasks).markSucceeded(eq(1L), eq("life-habit-custom-2026-01-01_2026-06-30.xlsx"),
+                eq(new byte[]{1, 2, 3}), any());
+        verify(tasks, never()).save(any());
     }
 
     @Test
@@ -79,13 +77,55 @@ class ExportTaskWorkerTest {
         when(tasks.markRunning(eq(1L), any())).thenReturn(1);
         when(tasks.findWithUserById(1L)).thenReturn(Optional.of(task));
         when(reports.customForUser(any(), any(), any())).thenThrow(new IllegalStateException("boom"));
+        when(tasks.markFailed(eq(1L), eq("boom"), any())).thenReturn(1);
         ExportTaskWorker worker = worker(tasks, reports, exporter);
 
         worker.generate(1L);
 
-        assertEquals(ExportTaskStatus.FAILED, task.getStatus());
-        assertEquals("boom", task.getErrorMessage());
-        verify(tasks).save(task);
+        verify(tasks).markFailed(eq(1L), eq("boom"), any());
+        verify(tasks, never()).save(any());
+    }
+
+    @Test
+    void doesNotPersistFileWhenCancelledWhileGenerating() {
+        ExportTaskRepository tasks = mock(ExportTaskRepository.class);
+        ReportService reports = mock(ReportService.class);
+        ReportExporter exporter = mock(ReportExporter.class);
+        User user = new User("demo", "hash");
+        ExportTask task = new ExportTask(user, ExportReportType.CUSTOM, ExportFormat.XLSX,
+                LocalDate.of(2026, 1, 1), LocalDate.of(2026, 6, 30));
+        when(tasks.markRunning(eq(1L), any())).thenReturn(1);
+        when(tasks.findWithUserById(1L)).thenReturn(Optional.of(task));
+        when(reports.customForUser(user, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 6, 30)))
+                .thenReturn(report());
+        when(exporter.xlsx(any())).thenReturn(new byte[]{1, 2, 3});
+        when(tasks.markSucceeded(eq(1L), any(), any(), any())).thenReturn(0);
+        ExportTaskWorker worker = worker(tasks, reports, exporter);
+
+        worker.generate(1L);
+
+        verify(tasks).markSucceeded(eq(1L), any(), any(), any());
+        verify(tasks, never()).save(any());
+    }
+
+    @Test
+    void doesNotPersistFailureWhenCancelledWhileFailing() {
+        ExportTaskRepository tasks = mock(ExportTaskRepository.class);
+        ReportService reports = mock(ReportService.class);
+        ReportExporter exporter = mock(ReportExporter.class);
+        User user = new User("demo", "hash");
+        ExportTask task = new ExportTask(user, ExportReportType.CUSTOM, ExportFormat.XLSX,
+                LocalDate.of(2026, 1, 1), LocalDate.of(2026, 6, 30));
+        when(tasks.markRunning(eq(1L), any())).thenReturn(1);
+        when(tasks.findWithUserById(1L)).thenReturn(Optional.of(task));
+        when(reports.customForUser(any(), any(), any())).thenThrow(new IllegalStateException("boom"));
+        when(tasks.markFailed(eq(1L), eq("boom"), any())).thenReturn(0);
+        ExportTaskWorker worker = worker(tasks, reports, exporter);
+
+        worker.generate(1L);
+
+        verify(tasks).markFailed(eq(1L), eq("boom"), any());
+        verify(tasks, never()).save(any());
     }
 
     private ExportTaskWorker worker(ExportTaskRepository tasks, ReportService reports, ReportExporter exporter) {
