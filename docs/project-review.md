@@ -102,7 +102,7 @@
 
 我保留了“规则判定权威、AI 只做表达”的原则：发给模型的只有脱敏聚合数字和规则结论，没有用户名、ID、备注、原始记录；模型被要求输出固定 JSON 结构并含免责声明。AI 默认关闭，只在显式调用时触发，未启用/无 key/无数据/配额满/超时/供应商异常全部降级成规则建议。
 
-为什么没用 spring-ai starter：版本矩阵里 2.0.x 要 Spring Boot 4、1.0.x 要 Boot 3.4+，项目是 3.3.3；兼容的 0.8.x 不在 Maven Central 且官方仓库访问受限。所以我写了 `OpenAiChatClient` 接口 + `RestClient` 实现，保留替换点。详见 [ai-advice.md](ai-advice.md)。
+版本选型：最初 Boot 3.3.3 无法使用 Spring AI（2.0 要 Boot 4、1.0/1.1 要 Boot 3.4+），所以先写 `OpenAiChatClient` 接口 + `RestClient` 实现保留替换点；升级到 Boot 3.5.16 + Spring AI 1.1.8 后已替换为 `SpringAiOpenAiChatClient`，服务层接口不变。详见 [ai-advice.md](ai-advice.md)。
 
 ### 12. 测试策略
 
