@@ -1,6 +1,8 @@
 package com.fzdzzj.lifehabitassistant;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fzdzzj.lifehabitassistant.config.ReportCache;
+import com.fzdzzj.lifehabitassistant.config.ReportProperties;
 import com.fzdzzj.lifehabitassistant.pojo.*;
 import com.fzdzzj.lifehabitassistant.server.dao.AiAdviceHistoryRepository;
 import com.fzdzzj.lifehabitassistant.server.dao.AiQuotaUsageRepository;
@@ -11,6 +13,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -178,7 +181,8 @@ class AiAdviceServiceTest {
                 new RuleBasedAdviceGenerator(TestDrinkRules.defaults()),
                 history, quota, properties, new AiSystemPromptLoader(properties),
                 chatClient, new AiAdviceContentParser(new ObjectMapper()),
-                new ObjectMapper(), currentUser, goals);
+                new ObjectMapper(), currentUser, goals,
+                new ReportCache(new ReportProperties(Duration.ofMinutes(10), 128)));
     }
 
     private void quotaUsed(int used) {

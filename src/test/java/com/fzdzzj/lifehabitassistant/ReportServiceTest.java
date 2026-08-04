@@ -8,6 +8,8 @@ import com.fzdzzj.lifehabitassistant.pojo.AdviceSource;
 import com.fzdzzj.lifehabitassistant.pojo.DailyGoals;
 import com.fzdzzj.lifehabitassistant.pojo.HealthStatistics;
 import com.fzdzzj.lifehabitassistant.pojo.User;
+import com.fzdzzj.lifehabitassistant.config.ReportCache;
+import com.fzdzzj.lifehabitassistant.config.ReportProperties;
 import com.fzdzzj.lifehabitassistant.server.dao.AiAdviceHistoryRepository;
 import com.fzdzzj.lifehabitassistant.server.service.AdviceGenerator;
 import com.fzdzzj.lifehabitassistant.server.service.AiAdviceContentParser;
@@ -21,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.time.Duration;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,6 +35,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 class ReportServiceTest {
     private static final DailyGoals DEFAULT_GOALS = new DailyGoals(420, 540, 1500, 30, 3);
@@ -49,7 +53,7 @@ class ReportServiceTest {
         assertEquals(LocalDate.of(2026, 7, 13), report.periodStart());
         assertEquals(LocalDate.of(2026, 7, 19), report.periodEnd());
         assertEquals(DEFAULT_GOALS, report.goals());
-        verify(habits).range(eq(LocalDate.of(2026, 7, 13)), eq(LocalDate.of(2026, 7, 19)));
+        verify(habits).range(any(User.class), eq(LocalDate.of(2026, 7, 13)), eq(LocalDate.of(2026, 7, 19)));
     }
 
     @Test
@@ -63,7 +67,7 @@ class ReportServiceTest {
         var report = service(habits, advice).monthly(YearMonth.of(2024, 2));
 
         assertEquals(LocalDate.of(2024, 2, 29), report.periodEnd());
-        verify(habits).range(eq(LocalDate.of(2024, 2, 1)), eq(LocalDate.of(2024, 2, 29)));
+        verify(habits).range(any(User.class), eq(LocalDate.of(2024, 2, 1)), eq(LocalDate.of(2024, 2, 29)));
     }
 
     @Test
@@ -89,7 +93,7 @@ class ReportServiceTest {
 
         var report = new ReportService(habits,
                 new HealthStatisticsService(TestDrinkRules.defaults()),
-                advice, history, parser, currentUser, goals()).weekly(LocalDate.of(2026, 7, 19));
+                advice, history, parser, currentUser, goals(), cache()).weekly(LocalDate.of(2026, 7, 19));
 
         assertEquals(AdviceSource.AI, report.aiAdvice().source());
         assertSame(content, report.aiAdvice().content());
@@ -111,9 +115,60 @@ class ReportServiceTest {
 
         var report = new ReportService(habits,
                 new HealthStatisticsService(TestDrinkRules.defaults()),
-                advice, history, parser, currentUser, goals()).weekly(LocalDate.of(2026, 7, 19));
+                advice, history, parser, currentUser, goals(), cache()).weekly(LocalDate.of(2026, 7, 19));
 
         assertNull(report.aiAdvice());
+    }
+
+    @Test
+    void weeklyShouldServeFromCacheWithoutRecomputing() {
+        HabitService habits = mock(HabitService.class);
+        AdviceGenerator advice = mock(AdviceGenerator.class);
+        CurrentUser currentUser = mock(CurrentUser.class);
+        User user = mock(User.class);
+        when(user.getId()).thenReturn(42L);
+        when(currentUser.require()).thenReturn(user);
+        when(habits.range(any(User.class), any(), any())).thenReturn(List.of());
+        when(advice.generate(anyInt(), any(HealthStatistics.class), any(DailyGoals.class)))
+                .thenReturn(new AnalysisDtos.AnalysisResponse(7, 0, "empty", List.of(), List.of()));
+
+        ReportService service = new ReportService(habits,
+                new HealthStatisticsService(TestDrinkRules.defaults()),
+                advice, history(42L), mock(AiAdviceContentParser.class), currentUser, goals(), cache());
+        service.weekly(LocalDate.of(2026, 7, 19));
+        service.weekly(LocalDate.of(2026, 7, 19));
+
+        verify(habits, times(1)).range(any(User.class), any(), any());
+    }
+
+    @Test
+    void evictingUserForcesRecompute() {
+        HabitService habits = mock(HabitService.class);
+        AdviceGenerator advice = mock(AdviceGenerator.class);
+        CurrentUser currentUser = mock(CurrentUser.class);
+        User user = mock(User.class);
+        when(user.getId()).thenReturn(42L);
+        when(currentUser.require()).thenReturn(user);
+        when(habits.range(any(User.class), any(), any())).thenReturn(List.of());
+        when(advice.generate(anyInt(), any(HealthStatistics.class), any(DailyGoals.class)))
+                .thenReturn(new AnalysisDtos.AnalysisResponse(7, 0, "empty", List.of(), List.of()));
+        ReportCache cache = cache();
+        ReportService service = new ReportService(habits,
+                new HealthStatisticsService(TestDrinkRules.defaults()),
+                advice, history(42L), mock(AiAdviceContentParser.class), currentUser, goals(), cache);
+
+        service.weekly(LocalDate.of(2026, 7, 19));
+        cache.evictUser(42L);
+        service.weekly(LocalDate.of(2026, 7, 19));
+
+        verify(habits, times(2)).range(any(User.class), any(), any());
+    }
+
+    private AiAdviceHistoryRepository history(Long userId) {
+        AiAdviceHistoryRepository history = mock(AiAdviceHistoryRepository.class);
+        when(history.findFirstByUserIdAndAdviceTypeAndPeriodStartAndPeriodEndOrderByCreatedAtDesc(
+                any(), any(), any(), any())).thenReturn(java.util.Optional.empty());
+        return history;
     }
 
     private ReportService service(HabitService habits, AdviceGenerator advice) {
@@ -125,12 +180,17 @@ class ReportServiceTest {
                 any(), any(), any(), any())).thenReturn(java.util.Optional.empty());
         return new ReportService(habits,
                 new HealthStatisticsService(TestDrinkRules.defaults()),
-                advice, history, parser, currentUser, goals());
+                advice, history, parser, currentUser, goals(), cache());
+    }
+
+    private ReportCache cache() {
+        return new ReportCache(new ReportProperties(Duration.ofMinutes(10), 128));
     }
 
     private GoalService goals() {
         GoalService goals = mock(GoalService.class);
         when(goals.get()).thenReturn(DEFAULT_GOALS);
+        when(goals.effective(any())).thenReturn(DEFAULT_GOALS);
         return goals;
     }
 }

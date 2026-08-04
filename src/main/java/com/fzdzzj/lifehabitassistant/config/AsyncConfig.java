@@ -1,0 +1,28 @@
+package com.fzdzzj.lifehabitassistant.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+
+import java.util.concurrent.Executor;
+
+/**
+ * Bounded single-instance executor for export generation. The worker is small
+ * and self-contained; a thread pool is enough and keeps the no-message-queue
+ * boundary documented in the optimization plan.
+ */
+@Configuration
+@EnableAsync
+public class AsyncConfig {
+    @Bean(name = "exportTaskExecutor")
+    public Executor exportTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(200);
+        executor.setThreadNamePrefix("export-");
+        executor.initialize();
+        return executor;
+    }
+}

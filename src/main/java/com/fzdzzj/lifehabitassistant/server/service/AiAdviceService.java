@@ -3,6 +3,7 @@ package com.fzdzzj.lifehabitassistant.server.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fzdzzj.lifehabitassistant.pojo.*;
+import com.fzdzzj.lifehabitassistant.config.ReportCache;
 import com.fzdzzj.lifehabitassistant.server.dao.AiAdviceHistoryRepository;
 import com.fzdzzj.lifehabitassistant.server.dao.AiQuotaUsageRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -43,13 +44,14 @@ public class AiAdviceService {
     private final ObjectMapper objectMapper;
     private final CurrentUser currentUser;
     private final GoalService goals;
+    private final ReportCache reportCache;
 
     public AiAdviceService(HabitService habits, HealthStatisticsService statistics,
                            RuleBasedAdviceGenerator ruleAdvice, AiAdviceHistoryRepository historyRepository,
                            AiQuotaUsageRepository quotaRepository, AiAdviceProperties properties,
                            AiSystemPromptLoader promptLoader, OpenAiChatClient chatClient,
                            AiAdviceContentParser contentParser, ObjectMapper objectMapper, CurrentUser currentUser,
-                           GoalService goals) {
+                           GoalService goals, ReportCache reportCache) {
         this.habits = habits;
         this.statistics = statistics;
         this.ruleAdvice = ruleAdvice;
@@ -62,6 +64,7 @@ public class AiAdviceService {
         this.objectMapper = objectMapper;
         this.currentUser = currentUser;
         this.goals = goals;
+        this.reportCache = reportCache;
     }
 
     @Transactional
@@ -126,6 +129,7 @@ public class AiAdviceService {
                                                             boolean callCounted) {
         AiAdviceHistory saved = historyRepository.save(new AiAdviceHistory(user, type, start, end, source, modelName,
                 properties.promptVersion(), toJson(content), callCounted));
+        reportCache.evictUser(user.getId());
         Quota quota = usage(user);
         return new AiAdviceDtos.AiAdviceResponse(source, content, saved.getId(), saved.getCreatedAt(),
                 quota.dailyUsed, properties.dailyLimit(), quota.monthlyUsed, properties.monthlyLimit());
