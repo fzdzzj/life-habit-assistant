@@ -73,7 +73,7 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 | 自定义每日目标 | 所有用户共用 `app.health.*` 全局阈值，无法按个人体质/目标调整 | 新增 `daily_goals` 表（每用户一行，`uk_daily_goal_user` 唯一约束）；`GET/PUT/DELETE /api/goals` 查询/upsert/重置；`GoalService.effective(user)` 解析生效目标，无记录时回落全局默认值 | [V7 迁移](../src/main/resources/db/migration/V7__create_daily_goals.sql)、[DailyGoal.java](../src/main/java/com/fzdzzj/lifehabitassistant/pojo/DailyGoal.java)、[GoalService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/GoalService.java)、[GoalController.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/controller/GoalController.java) | `DailyGoalRepositoryTest` 3 项（唯一约束、用户隔离、按用户删除）；`GoalServiceTest` 5 项（默认回落、upsert、重置、min<=max 校验、`effective` 不触请求上下文）；`GoalHttpIntegrationTest` 6 项（401、默认值、保存/更新/重置、统一 400、用户隔离、自定义目标改变趋势达标） |
 | 统计/建议/报告/AI 读取用户目标 | 达标与建议仍按全局阈值硬编码 | `HealthStatisticsService.summarize(records, anchor, goals)`、`RuleBasedAdviceGenerator.generate(days, statistics, goals)`、`HabitService.dailyEvaluation` 与 AI `userPrompt` 全部改为消费 `DailyGoals`；周报/月报/导出自动继承 | [HealthStatisticsService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/HealthStatisticsService.java)、[RuleBasedAdviceGenerator.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/RuleBasedAdviceGenerator.java)、[AiAdviceService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AiAdviceService.java)、[HabitService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/HabitService.java) | `HealthStatisticsServiceTest`、`RuleBasedAdviceGeneratorTest` 新增自定义/放宽目标改变达标与风险断言；既有 5 个测试类适配新签名 |
 
-### 依赖升级与 Spring AI starter（Issue #64）
+### 依赖升级与 Spring AI starter（Issue #64 / PR #65）
 
 | 优化项 | 问题 | 方案 | 落点 | 验证 |
 | --- | --- | --- | --- | --- |
