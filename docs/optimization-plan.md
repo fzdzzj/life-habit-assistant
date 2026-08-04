@@ -86,6 +86,19 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 | 周期报告 TTL 缓存 | 周报/月报每次请求全量重算，重复查看成本高 | 用户 + 类型 + 周期为 key 的内存缓存（TTL 默认 10 分钟、上限 128 条，可配置）；习惯/明细/目标/AI 解读写入后主动 `evictUser`，缓存永不比数据旧 | [ReportCache.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/ReportCache.java)、[ReportProperties.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/ReportProperties.java)、[ReportService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/ReportService.java) | `ReportCacheTest` 5 项（命中、TTL 过期、按用户失效、LRU 上限）；`ReportCacheHttpIntegrationTest` 验证改数据后周报立即反映新值；`ReportServiceTest` 验证第二次请求不再重算 |
 | 大区间异步导出 | 同步导出在请求线程生成大文件，耗时不可控 | 新增 `export_tasks` 表（V8）与 `POST/GET /api/export-tasks`、`GET /{id}/download`；自定义区间最长 5 年；`@Async` 线程池生成，`PENDING → RUNNING → SUCCEEDED/FAILED` 原子流转；按用户隔离，单用户最多 5 个待处理任务 | [ExportTask.java](../src/main/java/com/fzdzzj/lifehabitassistant/pojo/ExportTask.java)、[ExportTaskRepository.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/dao/ExportTaskRepository.java)、[ExportTaskService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/ExportTaskService.java)、[ExportTaskWorker.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/ExportTaskWorker.java)、[ExportTaskController.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/controller/ExportTaskController.java) | `ExportTaskServiceTest` 5 项（创建/周边界/区间校验/待处理上限/用户隔离/未完成与完成下载）；`ExportTaskWorkerTest` 3 项（重复认领跳过、成功落文件、失败记原因）；`ExportTaskHttpIntegrationTest` 5 项（401、custom 下载 xlsx、monthly 下载 pdf、用户隔离、非法区间 400） |
 
+### 身份、权限与管理后台（Issue #74）
+
+| 优化项 | 问题 | 方案 | 落点 | 验证 |
+| --- | --- | --- | --- | --- |
+| 会话与 refresh 轮换 | 只有单个短期 JWT，无法登出失效、多端并存、检测令牌泄露 | V9 已建 `sessions`/`refresh_tokens`；登录/注册返回 access + 一次性 refresh + 会话标识；refresh 原子轮换，旧令牌二次提交撤销整个会话（`REQUIRES_NEW` 独立事务避免回滚） | [AuthService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AuthService.java)、[SessionRevocationService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/SessionRevocationService.java)、[AuthV1Controller.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/controller/AuthV1Controller.java) | `AuthServiceTest` 轮换/重用/竞态；`AuthV1HttpIntegrationTest` 端到端覆盖 |
+| 多端会话与登出 | 无会话概念 | `GET/DELETE /api/v1/auth/sessions` 查询/撤销设备会话，`POST /api/v1/auth/logout` 幂等登出；多设备互不影响 | 同上 | 多设备并存、撤销指定设备、他人会话 404 |
+| 密码找回 | 忘记密码不可恢复 | `users.email` + 一次性短时效重置令牌（哈希存储）；未配置 SMTP 时 dev 写日志；重置后撤销全部会话 | [PasswordResetMailService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/PasswordResetMailService.java)、V10 迁移 | 请求不泄露账号、确认重置、旧会话失效、无效令牌 400 |
+| RBAC 与管理后台 | 单一普通用户模型 | `users.role`（V9）+ `@EnableMethodSecurity` + `@accessPolicy.isAdmin()`；用户/配额/导出任务/统计管理端点，最后一名有效 ADMIN 保护 | [AdminService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AdminService.java)、[AdminController.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/controller/AdminController.java) | `AdminHttpIntegrationTest` 401/403/放行、角色边界、禁用后登录 403 |
+| AI 配额用户级覆盖 | 配额只有全局配置 | `users.ai_daily_limit/ai_monthly_limit` 覆盖列（null 回落全局）；管理员可调整，AI 扣减读取用户级额度 | [AiAdviceService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AiAdviceService.java)、V10 迁移 | `AiAdviceServiceTest` 新增覆盖生效用例 |
+| API 版本化与多端基础 | 新端点无版本策略 | 新端点统一 `/api/v1`，旧 `/api` 冻结；CORS 来源可配置；OpenAPI 增加 v1 分组 | [SecurityConfig.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/SecurityConfig.java)、application.yml | 旧路径回归测试全部通过 |
+
+> 取舍：V10 只建本 PR 真实需要的列（`email`/`enabled`/AI 配额覆盖），不建第三方身份空表；第三方身份映射表留待微信/QQ 登录实施时新增迁移，AI 对话迁移顺延 V11。
+
 ## 三、关键取舍（防止“换个思路做坏”的约束）
 
 - **配额为什么用独立表而不是历史表计数**：历史表无法区分“调用失败（应计费）”和“未调用降级（不应计费）”；独立表只记录已发起的模型请求，语义干净。
@@ -118,7 +131,7 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 
 ## 五、明确不做（防跑偏清单）
 
-- 不做角色/RBAC、管理员后台、消息队列、微服务、多端适配（需求文档明确排除）。
+- 消息队列、微服务仍不做；角色/RBAC 与管理后台已由后端演进提案落地（Issue #74），管理前端另行提案。
 - 不升级 Spring Boot（独立任务，不与本轮混做）。
 - 不引入 Redis（单实例内存限流够用时不加中间件）。
 - 不改 `.env`、不提交任何真实密钥/令牌；只更新 `.env.example`。

@@ -132,7 +132,7 @@ public class AiAdviceService {
         reportCache.evictUser(user.getId());
         Quota quota = usage(user);
         return new AiAdviceDtos.AiAdviceResponse(source, content, saved.getId(), saved.getCreatedAt(),
-                quota.dailyUsed, properties.dailyLimit(), quota.monthlyUsed, properties.monthlyLimit());
+                quota.dailyUsed, dailyLimitOf(user), quota.monthlyUsed, monthlyLimitOf(user));
     }
 
     private boolean eligible(AiAdviceProperties properties, HealthStatistics summary) {
@@ -150,14 +150,22 @@ public class AiAdviceService {
         String monthKey = YearMonth.now().toString();
         ensureRow(user, AiQuotaPeriod.DAY, dayKey, now);
         if (quotaRepository.incrementIfBelowLimit(user.getId(), AiQuotaPeriod.DAY.name(), dayKey,
-                properties.dailyLimit(), now) != 1) {
+                dailyLimitOf(user), now) != 1) {
             throw new QuotaExceededException("daily quota exhausted");
         }
         ensureRow(user, AiQuotaPeriod.MONTH, monthKey, now);
         if (quotaRepository.incrementIfBelowLimit(user.getId(), AiQuotaPeriod.MONTH.name(), monthKey,
-                properties.monthlyLimit(), now) != 1) {
+                monthlyLimitOf(user), now) != 1) {
             throw new QuotaExceededException("monthly quota exhausted");
         }
+    }
+
+    private int dailyLimitOf(User user) {
+        return user.getAiDailyLimit() == null ? properties.dailyLimit() : user.getAiDailyLimit();
+    }
+
+    private int monthlyLimitOf(User user) {
+        return user.getAiMonthlyLimit() == null ? properties.monthlyLimit() : user.getAiMonthlyLimit();
     }
 
     private void ensureRow(User user, AiQuotaPeriod period, String key, LocalDateTime now) {

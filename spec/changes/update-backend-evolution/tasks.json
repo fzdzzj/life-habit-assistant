@@ -64,74 +64,74 @@
     "category": "阶段 3：身份与会话",
     "task": "登录签发 refresh token 与一次性轮换",
     "steps": [
-      { "step": "基于 V9 会话表实现会话创建/查询 Repository", "completed": false },
-      { "step": "登录/注册返回 access token + refresh token，会话绑定设备标识与登录信息", "completed": false },
-      { "step": "实现 POST /api/v1/auth/refresh：校验、一次性轮换、旧 refresh 作废", "completed": false },
-      { "step": "实现 refresh 重用检测：同一 refresh 二次使用撤销整个会话", "completed": false },
-      { "step": "测试：轮换成功、重用撤销、过期/无效 refresh 拒绝", "completed": false }
+      { "step": "基于 V9 会话表实现会话创建/查询 Repository", "completed": true },
+      { "step": "登录/注册返回 access token + refresh token，会话绑定设备标识与登录信息", "completed": true },
+      { "step": "实现 POST /api/v1/auth/refresh：校验、一次性轮换、旧 refresh 作废", "completed": true },
+      { "step": "实现 refresh 重用检测：同一 refresh 二次使用撤销整个会话", "completed": true },
+      { "step": "测试：轮换成功、重用撤销、过期/无效 refresh 拒绝", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 7,
     "category": "阶段 3：身份与会话",
     "task": "登出与多端会话管理",
     "steps": [
-      { "step": "实现 POST /api/v1/auth/logout：使当前会话的 refresh 失效", "completed": false },
-      { "step": "实现 GET /api/v1/auth/sessions：返回当前用户全部会话（设备、登录时间、最后活跃）", "completed": false },
-      { "step": "实现 DELETE /api/v1/auth/sessions/{id}：撤销指定会话；撤销后 access 保留至自然过期，refresh 立即失效", "completed": false },
-      { "step": "测试：多设备互不影响、撤销指定设备、登出仅影响当前会话", "completed": false }
+      { "step": "实现 POST /api/v1/auth/logout：使当前会话的 refresh 失效", "completed": true },
+      { "step": "实现 GET /api/v1/auth/sessions：返回当前用户全部会话（设备、登录时间、最后活跃）", "completed": true },
+      { "step": "实现 DELETE /api/v1/auth/sessions/{id}：撤销指定会话；撤销后 access 保留至自然过期，refresh 立即失效", "completed": true },
+      { "step": "测试：多设备互不影响、撤销指定设备、登出仅影响当前会话", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 8,
     "category": "阶段 3：身份与会话",
     "task": "密码找回",
     "steps": [
-      { "step": "实现 POST /api/v1/auth/password-reset/request：生成一次性短时效令牌（哈希存储），通过配置的邮件通道发送；dev 未配置时写日志", "completed": false },
-      { "step": "实现 POST /api/v1/auth/password-reset/confirm：校验令牌并重置密码（复用密码策略）", "completed": false },
-      { "step": "重置成功后撤销该用户全部会话", "completed": false },
-      { "step": "测试：过期/已用令牌拒绝、账号不存在统一提示、重置后旧会话失效", "completed": false }
+      { "step": "实现 POST /api/v1/auth/password-reset/request：生成一次性短时效令牌（哈希存储），通过配置的邮件通道发送；dev 未配置时写日志", "completed": true },
+      { "step": "实现 POST /api/v1/auth/password-reset/confirm：校验令牌并重置密码（复用密码策略）", "completed": true },
+      { "step": "重置成功后撤销该用户全部会话", "completed": true },
+      { "step": "测试：过期/已用令牌拒绝、账号不存在统一提示、重置后旧会话失效", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 9,
     "category": "阶段 4：RBAC 与管理后台",
     "task": "角色模型与统一鉴权",
     "steps": [
-      { "step": "User 实体增加 role（USER/ADMIN），注册默认 USER，管理员可调整角色", "completed": false },
-      { "step": "启用方法安全并实现管理端点鉴权（注解或统一 Security 规则）", "completed": false },
-      { "step": "防止最后一个 ADMIN 被降级/禁用（保留至少一名管理员）", "completed": false },
-      { "step": "测试：未认证 401、USER 403、ADMIN 放行、角色变更边界", "completed": false }
+      { "step": "User 实体增加 role（USER/ADMIN），注册默认 USER，管理员可调整角色", "completed": true },
+      { "step": "启用方法安全并实现管理端点鉴权（注解或统一 Security 规则）", "completed": true },
+      { "step": "防止最后一个 ADMIN 被降级/禁用（保留至少一名管理员）", "completed": true },
+      { "step": "测试：未认证 401、USER 403、ADMIN 放行、角色变更边界", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 10,
     "category": "阶段 4：RBAC 与管理后台",
     "task": "管理后台 API",
     "steps": [
-      { "step": "用户管理：分页列表、用户概览、启用/禁用、角色调整", "completed": false },
-      { "step": "AI 配额管理：查看用户配额、调整日/月额度", "completed": false },
-      { "step": "导出任务管理：查看任意用户任务、取消 PENDING/RUNNING 任务", "completed": false },
-      { "step": "系统概览：用户数、任务数、配额用量等统计端点", "completed": false },
-      { "step": "测试：全部管理端点仅 ADMIN 可访问，普通用户数据不被泄露", "completed": false }
+      { "step": "用户管理：分页列表、用户概览、启用/禁用、角色调整", "completed": true },
+      { "step": "AI 配额管理：查看用户配额、调整日/月额度", "completed": true },
+      { "step": "导出任务管理：查看任意用户任务、取消 PENDING/RUNNING 任务", "completed": true },
+      { "step": "系统概览：用户数、任务数、配额用量等统计端点", "completed": true },
+      { "step": "测试：全部管理端点仅 ADMIN 可访问，普通用户数据不被泄露", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 11,
     "category": "阶段 5：多端与版本化",
     "task": "API 版本化与多端基础",
     "steps": [
-      { "step": "新增端点统一使用 /api/v1 前缀，现有 /api 端点冻结不变", "completed": false },
-      { "step": "CORS 配置支持多端（允许来源可配置），并补充安全默认值", "completed": false },
-      { "step": "OpenAPI 分组展示 v1 端点并更新文档", "completed": false },
-      { "step": "回归测试：全部旧端点路径与响应结构不变", "completed": false }
+      { "step": "新增端点统一使用 /api/v1 前缀，现有 /api 端点冻结不变", "completed": true },
+      { "step": "CORS 配置支持多端（允许来源可配置），并补充安全默认值", "completed": true },
+      { "step": "OpenAPI 分组展示 v1 端点并更新文档", "completed": true },
+      { "step": "回归测试：全部旧端点路径与响应结构不变", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 12,
@@ -190,7 +190,7 @@
     "task": "第三方身份绑定扩展约束",
     "steps": [
       { "step": "在 identity-access-admin spec-delta 固化独立身份映射表、无密码账号与会话复用约束", "completed": true },
-      { "step": "更新版本规划：身份权限 PR 新增 V10 建 user_identities，AI 对话迁移顺延 V11", "completed": true },
+      { "step": "更新版本规划：身份权限 PR 新增 V10（用户邮箱/启用状态/AI 配额覆盖），第三方身份映射表待微信/QQ 登录实施时新增迁移，AI 对话迁移顺延 V11", "completed": true },
       { "step": "验证：本期不创建空表、不改 users 主表，openspec 结构验证通过", "completed": true }
     ],
     "passes": true

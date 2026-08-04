@@ -20,8 +20,16 @@ public class ApiException extends RuntimeException {
         return new ApiException(ErrorCode.RESOURCE_CONFLICT, message);
     }
 
+    public static ApiException badRequest(String message) {
+        return new ApiException(ErrorCode.VALIDATION_FAILED, message);
+    }
+
     public static ApiException unauthorized(String message) {
         return new ApiException(ErrorCode.UNAUTHORIZED, message);
+    }
+
+    public static ApiException forbidden(String message) {
+        return new ApiException(ErrorCode.FORBIDDEN, message);
     }
 
     public static ApiException tooManyRequests(String message) {

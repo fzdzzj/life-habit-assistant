@@ -34,6 +34,12 @@ app:
     secret: ${JWT_SECRET}
     expiration-hours: ${JWT_EXPIRATION_HOURS:24}
   security:
+    refresh-token-ttl-minutes: ${REFRESH_TOKEN_TTL_MINUTES:43200}
+    password-reset-ttl-minutes: ${PASSWORD_RESET_TTL_MINUTES:30}
+    cors:
+      allowed-origins:
+        - http://localhost:5173
+        - http://localhost:3000
     rate-limit:
       register-per-ip: 5
       login-per-ip: 20
@@ -83,6 +89,11 @@ app:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+  group-configs:
+    - group: v1
+      paths-to-match: /api/v1/**
+    - group: default
+      paths-to-match: /**
 
 management:
   endpoints:

@@ -51,6 +51,8 @@ class AiAdviceServiceTest {
         when(goals.get()).thenReturn(new DailyGoals(420, 540, 1500, 30, 3));
         user = mock(User.class);
         when(user.getId()).thenReturn(42L);
+        when(user.getAiDailyLimit()).thenReturn(null);
+        when(user.getAiMonthlyLimit()).thenReturn(null);
         when(currentUser.require()).thenReturn(user);
         when(history.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(quota.incrementIfBelowLimit(any(), any(), any(), anyInt(), any())).thenReturn(1);
@@ -145,6 +147,23 @@ class AiAdviceServiceTest {
         assertEquals(AdviceSource.RULE_FALLBACK, response.source());
         assertEquals(30, response.monthlyLimit());
         verifyNoInteractions(chatClient);
+    }
+
+    @Test
+    void perUserQuotaOverrideShouldReplaceGlobalLimits() {
+        givenOneRecord();
+        when(chatClient.chat(any(), any())).thenReturn(AI_JSON);
+        when(user.getAiDailyLimit()).thenReturn(5);
+        when(user.getAiMonthlyLimit()).thenReturn(60);
+        quotaUsed(1);
+
+        AiAdviceDtos.AiAdviceResponse response = service.analysis(7);
+
+        assertEquals(AdviceSource.AI, response.source());
+        assertEquals(5, response.dailyLimit());
+        assertEquals(60, response.monthlyLimit());
+        verify(quota).incrementIfBelowLimit(eq(42L), eq("DAY"), any(), eq(5), any());
+        verify(quota).incrementIfBelowLimit(eq(42L), eq("MONTH"), any(), eq(60), any());
     }
 
     @Test
