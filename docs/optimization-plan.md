@@ -56,6 +56,16 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 | --- | --- | --- | --- | --- |
 | 深分页 | `PageRequest.of(page, size)` 深页码全表扫描，耗时不可控 | 新增 `app.pagination.max-offset`（默认 10000），`offset = page * size`（long 防溢出）超过上限返回统一 400，提示缩小日期范围；阈值配置化 | [PaginationProperties.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/PaginationProperties.java)、[HabitService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/HabitService.java) | `HabitServiceTest` 新增超限拒绝且不查库；`ValidationBoundaryHttpIntegrationTest` 新增边界：100*100 拒、99*100 放行、size>100 仍被原校验拒 |
 
+### 本地 MySQL 冒烟验收（Issue #58）
+
+| 检查项 | 结果（2026-08-04 实测） |
+| --- | --- |
+| 构建与测试 | `mvn clean package` BUILD SUCCESS；80 项测试 0 失败、1 项跳过（Testcontainers，本地无 Docker） |
+| 应用启动与迁移 | JDK 21 + 本地 MySQL（3306，`.env` 配置）；`/actuator/health` UP；旧库启动时自动补跑 Flyway V5/V6，迁移历史全部 SUCCESS |
+| 冒烟链路 | 注册 → 登录 → 未授权 401 → 4 天习惯录入（夜睡/午睡、运动、饮水含风险饮料、重复提交更新）→ 列表/单日查询 → 趋势 → 规则分析 → 周报/月报 → xlsx/pdf 导出（文件头 PK / %PDF 校验）→ AI 降级路径（source=RULE_FALLBACK） |
+| 落库核对 | `ai_advice_history` 1 行（call_counted=0）、`ai_quota_usage` 0 行、`habit_records` 4 行 |
+| 实测确认的业务规则 | wakeAt / startedAt / recordedAt 不得晚于当前时间：造数必须用过去时间，未来时间会被 400 拒绝（符合预期，非缺陷） |
+
 ## 三、关键取舍（防止“换个思路做坏”的约束）
 
 - **配额为什么用独立表而不是历史表计数**：历史表无法区分“调用失败（应计费）”和“未调用降级（不应计费）”；独立表只记录已发起的模型请求，语义干净。
@@ -99,8 +109,8 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 
 ## 六、本轮验收标准
 
-- [x] `mvn test`：69 个测试全部通过（新增配额原子性、并发重试、异常兜底、限流窗口、失败锁定、429 集成测试）。
+- [x] `mvn test`：80 个测试通过（1 项 Testcontainers 跳过，本地无 Docker；新增配额原子性、并发重试、异常兜底、限流窗口、失败锁定、429 集成测试）。
 - [x] 注册/登录限流：连续失败被 429 拒绝；正常登录不受影响（HTTP 集成测试覆盖）。
 - [x] PR #45 的 GitHub Actions CI 通过。
 - [x] Flyway V6 建表（H2 已验证 SQL 语义；真实 MySQL 冒烟列入 P1）。
-- [ ] 本地 MySQL 冒烟：启动应用 → 注册登录 → 录数据 → 趋势/报告 → 导出 → AI 降级路径可走通（需要 `.env` 配置）。
+- [x] 本地 MySQL 冒烟：启动应用 → 注册登录 → 录数据 → 趋势/报告 → 导出 → AI 降级路径可走通（2026-08-04 实测通过，证据见二）。
