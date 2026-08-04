@@ -175,14 +175,14 @@
     "category": "阶段 7：扩展预留与交付",
     "task": "扩展性约束落地与全量交付",
     "steps": [
-      { "step": "落实扩展性设计约束：社交关系与 App 端明细走独立表/独立模块，不改既有聚合根与已发布迁移", "completed": false },
-      { "step": "落地领域边界说明与架构约束测试（排行榜复用统一统计口径、端类型仅作会话元数据）", "completed": false },
-      { "step": "补齐单元与集成测试：每个需求的正常、错误与边界场景全覆盖", "completed": false },
-      { "step": "mvn test 全绿（含 Testcontainers 迁移验证）；本地 MySQL 冒烟：认证/管理 API/任务生命周期/AI 对话走通", "completed": false },
-      { "step": "更新 README、optimization-plan.md 与 OpenAPI 文档", "completed": false },
-      { "step": "按 capability 拆三个 PR：异步导出生命周期 → 身份权限管理后台 → AI 对话；CI 通过后合入并关 Issue", "completed": false }
+      { "step": "落实扩展性设计约束：社交关系与 App 端明细走独立表/独立模块，不改既有聚合根与已发布迁移", "completed": true },
+      { "step": "落地领域边界说明与架构约束测试（排行榜复用统一统计口径、端类型仅作会话元数据）", "completed": true },
+      { "step": "补齐单元与集成测试：每个需求的正常、错误与边界场景全覆盖", "completed": true },
+      { "step": "mvn test 全绿（含 Testcontainers 迁移验证）；本地 MySQL 冒烟：认证/管理 API/任务生命周期/AI 对话走通", "completed": true },
+      { "step": "更新 README、optimization-plan.md 与 OpenAPI 文档", "completed": true },
+      { "step": "按 capability 拆三个 PR：异步导出生命周期 → 身份权限管理后台 → AI 对话；CI 通过后合入并关 Issue", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 16,
