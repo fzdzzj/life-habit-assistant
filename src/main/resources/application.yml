@@ -93,6 +93,10 @@ app:
     energy-drink-risk-volume-ml: 1
     alcohol-risk-volume-ml: 1
 springdoc:
+  info:
+    title: 生活习惯助手 API
+    description: 记录 → 趋势 → 报告 → 导出 → AI 建议/对话；/api/v1 承载新能力（身份、管理后台、AI 对话），旧 /api 端点保持兼容。
+    version: 1.0.0
   swagger-ui:
     path: /swagger-ui.html
   group-configs:

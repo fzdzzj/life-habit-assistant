@@ -108,6 +108,43 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 | 配额统一 | 对话若另建计数，会与报告解读各自为政 | 抽 `AiQuotaService` 共享 `ai_quota_usage` 日/月原子扣减；失败尝试计数、降级不计数；管理员用户级额度覆盖同时生效 | [AiQuotaService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AiQuotaService.java)、`AiAdviceService`/`AiConversationService` 共用 | `AiAdviceServiceTest` 回归 + `AiConversationServiceTest` 用户级覆盖；`AiConversationQuotaHttpIntegrationTest` 配额耗尽不调用模型、不计数 |
 | 上下文脱敏 | 对话若直接传业务对象会泄露个人数据 | 只传聚合指标与规则结论 + 最近 N 轮对话文本；不传用户名/账号 ID/备注/原始记录；`OpenAiChatClient` 增加多消息重载 | [ai-conversation-system-v1.txt](../src/main/resources/prompts/ai-conversation-system-v1.txt)、[SpringAiOpenAiChatClient.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/SpringAiOpenAiChatClient.java) | 单元测试断言 user prompt 不含用户名/备注；历史只含对话文本 |
 
+### 扩展性约束落地与全量交付验收（Issue #78）
+
+#### 架构约束回归测试
+
+新增 [ArchitectureConstraintTest.java](../src/test/java/com/fzdzzj/lifehabitassistant/ArchitectureConstraintTest.java) 7 项，把扩展性预留规范固化为可执行检查：
+
+| 约束 | 检查内容 |
+| --- | --- |
+| 表映射完整 | 迁移中每张表必须有对应 JPA 实体（禁止死表/空表） |
+| 预留能力不建空表 | 好友/动态/社区/排行榜/轨迹/用机时长/第三方身份绑定表本期不得存在 |
+| 迁移只增不改 | 迁移必须按 V1–V11 顺序追加、版本不重复；新增迁移时同步更新放行清单 |
+| 排行榜复用统一统计口径 | `HealthStatistics` 只允许由 `HealthStatisticsService` 构造；趋势/报告/AI 上下文必须依赖统一统计服务 |
+| 端类型仅作会话元数据 | 生产代码禁止 `deviceType`/`clientType` 等鉴权分支字段与独立 App 会话/令牌体系 |
+| 预留领域不建包 | `social`/`community`/`leaderboard`/`apptracking` 包本期不存在，功能立项时以独立模块新增 |
+
+#### 需求 → 测试覆盖矩阵
+
+| 规范能力 | 正常/错误/边界覆盖 |
+| --- | --- |
+| 异步导出任务生命周期（tasks 1–5） | `ExportTaskServiceTest`（创建/区间校验/待处理上限/取消/重试/保留期）、`ExportTaskLifecycleRepositoryTest`（原子流转/并发竞争）、`ExportTaskWorkerTest`（认领/落文件/取消竞争）、`ExportTaskV1HttpIntegrationTest`（401/分页/取消/重试） |
+| 身份权限与管理后台（tasks 6–11） | `AuthServiceTest`（refresh 轮换/重用撤销/密码找回）、`AuthV1HttpIntegrationTest`（端到端多端会话）、`AdminHttpIntegrationTest`（401/403/放行/角色边界/最后管理员保护）、`RuntimeProfileTest`（版本化与多端基础） |
+| AI 多轮对话（tasks 12–14） | `AiConversationServiceTest`（多轮上下文/脱敏/降级/用户隔离/超长 400/配额覆盖）、`AiConversationHttpIntegrationTest`（创建/列表/删除级联/消息正序/分页）、`AiConversationQuotaHttpIntegrationTest`（配额耗尽不调用模型不计数）、`AiConversationPromptLoaderTest`、`SpringAiOpenAiChatClientTest` |
+| 扩展性约束（task 15） | `ArchitectureConstraintTest` 7 项（见上表）；`MySqlContextBootIntegrationTest`（真实 MySQL 全上下文 + Hibernate validate） |
+| 数据库迁移 | `FlywayMySqlMigrationIntegrationTest`（V1–V11 空库执行两次、历史全 SUCCESS；CI/Testcontainers） |
+
+#### 本地 MySQL 冒烟（2026-08-04 实测，MySQL80）
+
+| 检查项 | 结果 |
+| --- | --- |
+| 旧库自动升级 | 本地库原为 V6，启动时 Flyway 自动应用 V7–V11（5 个迁移），随后 `/actuator/health` UP |
+| 认证 | 注册 2 用户 → 登录 → refresh 一次性轮换成功 → 会话列表正确 |
+| 管理 API | 提升 ADMIN 后 `users/stats/quotas/export-tasks` 全部走通；普通用户访问管理端点返回 403 |
+| 任务生命周期 | custom xlsx 创建 → SUCCEEDED → 下载成功（文件头 `PK`，6337 字节）；monthly pdf 创建后立即 cancel → CANCELLED；注入 FAILED → retry → PENDING → SUCCEEDED |
+| AI 对话 | 创建会话 → 发送消息返回 `RULE_FALLBACK`（`callCounted=false`）→ 消息 USER/ASSISTANT 正序 → 删除会话后 404；`ai_quota_usage` 0 行（降级不计数） |
+| 启动缺陷修复 | 冒烟发现并修复两处“迁移 DDL 与 Hibernate 校验不一致”：`export_tasks.file_content`（V8 LONGBLOB ↔ 实体 tinyblob）改实体为 `LONGVARBINARY`；`refresh_tokens/password_reset_tokens.token_hash`（V9 CHAR(64) ↔ varchar(64)）改实体为 `CHAR` |
+| 防回归 | 新增 `MySqlContextBootIntegrationTest`：真实 MySQL 上 Flyway V1–V11 + 默认 `ddl-auto=validate` 全上下文启动（本地无 Docker 跳过，CI 必跑） |
+
 ## 三、关键取舍（防止“换个思路做坏”的约束）
 
 - **配额为什么用独立表而不是历史表计数**：历史表无法区分“调用失败（应计费）”和“未调用降级（不应计费）”；独立表只记录已发起的模型请求，语义干净。
@@ -157,3 +194,4 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 - [x] 自定义每日目标：`mvn test` 96 项通过（1 项 Testcontainers 跳过）；目标查询/upsert/重置/校验/隔离与自定义目标改变达标、建议全部覆盖。
 - [x] 报表缓存与异步导出：`mvn test` 122 项通过（1 项 Testcontainers 跳过）；缓存命中/失效、导出任务状态流转、用户隔离、HTTP 轮询与下载全覆盖；Flyway V8 真实 MySQL 迁移由 CI 的 Testcontainers 用例验证。
 - [x] AI 多轮对话：`mvn test` 208 项通过（1 项 Testcontainers 跳过）；会话/消息用户隔离、多轮上下文限制、模型失败与配额耗尽降级、删除级联、共享配额与上下文脱敏全部覆盖；Flyway V11 真实 MySQL 迁移由 CI 的 Testcontainers 用例验证。
+- [x] 扩展性约束与交付验收：`mvn test` 216 项通过、0 失败（Docker 可用时 Testcontainers 两用例也执行并通过；无 Docker 时自动跳过）；架构约束 7 项、MySQL 全上下文启动回归、V1–V11 双跑全部验证；本地 MySQL80 冒烟认证/管理 API/任务生命周期/AI 对话全部走通，并修复 2 处迁移 DDL 与实体类型不一致（V8 LONGBLOB、V9 CHAR(64)）。

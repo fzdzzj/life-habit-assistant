@@ -12,6 +12,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -41,6 +43,7 @@ public class ExportTask {
     @Column(name = "file_name", length = 255)
     private String fileName;
     @Lob
+    @JdbcTypeCode(SqlTypes.LONGVARBINARY)
     @Column(name = "file_content")
     private byte[] fileContent;
     @Column(name = "error_message", length = 500)
