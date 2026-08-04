@@ -4,60 +4,60 @@
     "category": "阶段 1：数据模型与迁移",
     "task": "V9 数据库迁移与实体扩展",
     "steps": [
-      { "step": "编写 V9 迁移：users 增加 role；新建 refresh_tokens/sessions、password_reset_tokens 表；export_tasks 支持 CANCELLED 与取消时间字段", "completed": false },
-      { "step": "更新 User/ExportTask 实体与枚举（Role、ExportTaskStatus 增加 CANCELLED）", "completed": false },
-      { "step": "更新 FlywayMySqlMigrationIntegrationTest 期望迁移版本为 V9", "completed": false },
-      { "step": "本地 H2 测试与真实 MySQL（Testcontainers/CI）双库迁移验证通过", "completed": false }
+      { "step": "编写 V9 迁移：users 增加 role；新建 refresh_tokens/sessions、password_reset_tokens 表；export_tasks 支持 CANCELLED 与取消时间字段", "completed": true },
+      { "step": "更新 User/ExportTask 实体与枚举（Role、ExportTaskStatus 增加 CANCELLED）", "completed": true },
+      { "step": "更新 FlywayMySqlMigrationIntegrationTest 期望迁移版本为 V9", "completed": true },
+      { "step": "本地 H2 测试与真实 MySQL（Testcontainers/CI）双库迁移验证通过", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "阶段 2：异步导出任务生命周期",
     "task": "导出任务分页列表",
     "steps": [
-      { "step": "ExportTaskRepository 增加按用户、可选状态、创建时间倒序的分页查询", "completed": false },
-      { "step": "ExportTaskService.list 复用分页上限校验（max-offset）并保持用户隔离", "completed": false },
-      { "step": "新增 GET /api/v1/export-tasks 接口，返回统一分页结构", "completed": false },
-      { "step": "测试：状态过滤、用户隔离、分页边界", "completed": false }
+      { "step": "ExportTaskRepository 增加按用户、可选状态、创建时间倒序的分页查询", "completed": true },
+      { "step": "ExportTaskService.list 复用分页上限校验（max-offset）并保持用户隔离", "completed": true },
+      { "step": "新增 GET /api/v1/export-tasks 接口，返回统一分页结构", "completed": true },
+      { "step": "测试：状态过滤、用户隔离、分页边界", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 3,
     "category": "阶段 2：异步导出任务生命周期",
     "task": "导出任务取消",
     "steps": [
-      { "step": "Repository 增加原子流转：PENDING/RUNNING -> CANCELLED（UPDATE ... WHERE status IN (...)）", "completed": false },
-      { "step": "ExportTaskService.cancel 处理成功、冲突（409）与不存在/非本人（404）", "completed": false },
-      { "step": "ExportTaskWorker 完成前校验 CANCELLED，不写入文件内容", "completed": false },
-      { "step": "测试：取消成功、已结束任务不可取消、并发取消与认领竞争", "completed": false }
+      { "step": "Repository 增加原子流转：PENDING/RUNNING -> CANCELLED（UPDATE ... WHERE status IN (...)）", "completed": true },
+      { "step": "ExportTaskService.cancel 处理成功、冲突（409）与不存在/非本人（404）", "completed": true },
+      { "step": "ExportTaskWorker 完成前校验 CANCELLED，不写入文件内容", "completed": true },
+      { "step": "测试：取消成功、已结束任务不可取消、并发取消与认领竞争", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 4,
     "category": "阶段 2：异步导出任务生命周期",
     "task": "导出任务失败重试",
     "steps": [
-      { "step": "Repository 增加原子流转：FAILED -> PENDING 并清空 error_message", "completed": false },
-      { "step": "ExportTaskService.retry 校验状态并遵守单用户待处理任务上限", "completed": false },
-      { "step": "新增 POST /api/v1/export-tasks/{id}/retry 接口", "completed": false },
-      { "step": "测试：重试后成功生成文件、非 FAILED 拒绝、上限约束", "completed": false }
+      { "step": "Repository 增加原子流转：FAILED -> PENDING 并清空 error_message", "completed": true },
+      { "step": "ExportTaskService.retry 校验状态并遵守单用户待处理任务上限", "completed": true },
+      { "step": "新增 POST /api/v1/export-tasks/{id}/retry 接口", "completed": true },
+      { "step": "测试：重试后成功生成文件、非 FAILED 拒绝、上限约束", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 5,
     "category": "阶段 2：异步导出任务生命周期",
     "task": "导出任务保留期清理",
     "steps": [
-      { "step": "新增 app.export.retention-days 配置（默认 7 天）", "completed": false },
-      { "step": "实现 @Scheduled 清理任务：删除 SUCCEEDED 且超过保留期的任务及其文件，清理前写日志", "completed": false },
-      { "step": "保留清理入口可测试（手动触发接口或可直接调用的 Service 方法）", "completed": false },
-      { "step": "测试：未超期保留、超期删除、不影响 PENDING/RUNNING/FAILED", "completed": false }
+      { "step": "新增 app.export.retention-days 配置（默认 7 天）", "completed": true },
+      { "step": "实现 @Scheduled 清理任务：删除 SUCCEEDED 且超过保留期的任务及其文件，清理前写日志", "completed": true },
+      { "step": "保留清理入口可测试（手动触发接口或可直接调用的 Service 方法）", "completed": true },
+      { "step": "测试：未超期保留、超期删除、不影响 PENDING/RUNNING/FAILED", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 6,
@@ -138,9 +138,9 @@
     "category": "阶段 6：AI 多轮对话",
     "task": "对话会话与消息数据模型",
     "steps": [
-      { "step": "编写 V10 迁移：ai_conversations、ai_conversation_messages 表（用户归属、角色、来源、时间）", "completed": false },
+      { "step": "编写 V11 迁移：ai_conversations、ai_conversation_messages 表（用户归属、角色、来源、时间）", "completed": false },
       { "step": "新增对话会话/消息实体与 Repository（按用户、最近活动倒序）", "completed": false },
-      { "step": "更新 FlywayMySqlMigrationIntegrationTest 期望迁移版本为 V10", "completed": false },
+      { "step": "更新 FlywayMySqlMigrationIntegrationTest 期望迁移版本为 V11", "completed": false },
       { "step": "H2 与真实 MySQL（Testcontainers/CI）双库迁移验证通过", "completed": false }
     ],
     "passes": false
@@ -183,5 +183,16 @@
       { "step": "按 capability 拆三个 PR：异步导出生命周期 → 身份权限管理后台 → AI 对话；CI 通过后合入并关 Issue", "completed": false }
     ],
     "passes": false
+  },
+  {
+    "number": 16,
+    "category": "阶段 7：扩展预留与交付",
+    "task": "第三方身份绑定扩展约束",
+    "steps": [
+      { "step": "在 identity-access-admin spec-delta 固化独立身份映射表、无密码账号与会话复用约束", "completed": true },
+      { "step": "更新版本规划：身份权限 PR 新增 V10 建 user_identities，AI 对话迁移顺延 V11", "completed": true },
+      { "step": "验证：本期不创建空表、不改 users 主表，openspec 结构验证通过", "completed": true }
+    ],
+    "passes": true
   }
 ]
