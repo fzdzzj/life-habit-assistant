@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Verifies the Flyway migration set (V1-V6) against a real MySQL 8 database,
+ * Verifies the Flyway migration set (V1-V7) against a real MySQL 8 database,
  * not just H2 in MySQL-compatibility mode. Skipped automatically when Docker
  * is unavailable; CI runs on GitHub-hosted runners where Docker is present.
  */
@@ -52,13 +52,13 @@ class FlywayMySqlMigrationIntegrationTest {
                 .load();
 
         MigrateResult firstRun = flyway.migrate();
-        assertEquals(6, firstRun.migrationsExecuted, "空库首次迁移应执行 V1-V6 共 6 个版本");
+        assertEquals(7, firstRun.migrationsExecuted, "空库首次迁移应执行 V1-V7 共 7 个版本");
 
         MigrationInfo[] applied = flyway.info().applied();
         List<String> versions = Arrays.stream(applied)
                 .map(info -> info.getVersion().toString())
                 .toList();
-        assertEquals(List.of("1", "2", "3", "4", "5", "6"), versions, "迁移历史应按版本顺序完整");
+        assertEquals(List.of("1", "2", "3", "4", "5", "6", "7"), versions, "迁移历史应按版本顺序完整");
         assertTrue(Arrays.stream(applied)
                         .allMatch(info -> info.getState() == MigrationState.SUCCESS),
                 "所有已应用迁移都应为 SUCCESS");
