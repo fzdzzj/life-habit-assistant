@@ -51,6 +51,8 @@ public class ExportTask {
     private LocalDateTime startedAt;
     @Column(name = "finished_at")
     private LocalDateTime finishedAt;
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
 
     protected ExportTask() {
     }
@@ -78,6 +80,11 @@ public class ExportTask {
         this.status = ExportTaskStatus.FAILED;
         this.errorMessage = message;
         this.finishedAt = LocalDateTime.now();
+    }
+
+    public void cancel() {
+        this.status = ExportTaskStatus.CANCELLED;
+        this.cancelledAt = LocalDateTime.now();
     }
 
     public Long getId() {
@@ -130,5 +137,9 @@ public class ExportTask {
 
     public LocalDateTime getFinishedAt() {
         return finishedAt;
+    }
+
+    public LocalDateTime getCancelledAt() {
+        return cancelledAt;
     }
 }

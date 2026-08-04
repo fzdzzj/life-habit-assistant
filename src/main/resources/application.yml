@@ -47,6 +47,7 @@ app:
   export:
     max-days: 1826
     max-pending-per-user: 5
+    retention-days: 7
   health:
     minimum-sleep-minutes: 420
     maximum-sleep-minutes: 540
