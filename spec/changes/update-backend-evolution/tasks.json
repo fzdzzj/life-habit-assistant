@@ -138,37 +138,37 @@
     "category": "阶段 6：AI 多轮对话",
     "task": "对话会话与消息数据模型",
     "steps": [
-      { "step": "编写 V11 迁移：ai_conversations、ai_conversation_messages 表（用户归属、角色、来源、时间）", "completed": false },
-      { "step": "新增对话会话/消息实体与 Repository（按用户、最近活动倒序）", "completed": false },
-      { "step": "更新 FlywayMySqlMigrationIntegrationTest 期望迁移版本为 V11", "completed": false },
-      { "step": "H2 与真实 MySQL（Testcontainers/CI）双库迁移验证通过", "completed": false }
+      { "step": "编写 V11 迁移：ai_conversations、ai_conversation_messages 表（用户归属、角色、来源、时间）", "completed": true },
+      { "step": "新增对话会话/消息实体与 Repository（按用户、最近活动倒序）", "completed": true },
+      { "step": "更新 FlywayMySqlMigrationIntegrationTest 期望迁移版本为 V11", "completed": true },
+      { "step": "H2 与真实 MySQL（Testcontainers/CI）双库迁移验证通过", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 13,
     "category": "阶段 6：AI 多轮对话",
     "task": "对话服务与接口",
     "steps": [
-      { "step": "实现创建会话、会话列表（分页、最近活动倒序）、删除会话（级联消息）Service 与 Controller", "completed": false },
-      { "step": "实现发送消息：保存用户消息，携带最近 N 轮上下文调用模型，保存 AI 回复并返回", "completed": false },
-      { "step": "模型失败或配额不足时保存并返回降级规则回复，标记 source=RULE_FALLBACK", "completed": false },
-      { "step": "新增端点：POST/GET /api/v1/ai/conversations、GET/POST /{id}/messages、DELETE /{id}", "completed": false },
-      { "step": "测试：多轮上下文、降级、删除级联、用户隔离、会话不存在 404", "completed": false }
+      { "step": "实现创建会话、会话列表（分页、最近活动倒序）、删除会话（级联消息）Service 与 Controller", "completed": true },
+      { "step": "实现发送消息：保存用户消息，携带最近 N 轮上下文调用模型，保存 AI 回复并返回", "completed": true },
+      { "step": "模型失败或配额不足时保存并返回降级规则回复，标记 source=RULE_FALLBACK", "completed": true },
+      { "step": "新增端点：POST/GET /api/v1/ai/conversations、GET/POST /{id}/messages、DELETE /{id}", "completed": true },
+      { "step": "测试：多轮上下文、降级、删除级联、用户隔离、会话不存在 404", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 14,
     "category": "阶段 6：AI 多轮对话",
     "task": "对话配额统一与上下文脱敏",
     "steps": [
-      { "step": "对话模型调用复用 ai_quota_usage 日/月原子扣减，与报告解读共享额度", "completed": false },
-      { "step": "失败尝试计入配额、降级（规则回复）不计数，行为与现有 AI 解读一致", "completed": false },
-      { "step": "上下文脱敏：仅包含聚合指标与规则结论，不传用户名、账号 ID、备注或原始记录；限制最近 N 轮", "completed": false },
-      { "step": "测试：共享配额、配额满降级、脱敏断言、失败尝试计数", "completed": false }
+      { "step": "对话模型调用复用 ai_quota_usage 日/月原子扣减，与报告解读共享额度", "completed": true },
+      { "step": "失败尝试计入配额、降级（规则回复）不计数，行为与现有 AI 解读一致", "completed": true },
+      { "step": "上下文脱敏：仅包含聚合指标与规则结论，不传用户名、账号 ID、备注或原始记录；限制最近 N 轮", "completed": true },
+      { "step": "测试：共享配额、配额满降级、脱敏断言、失败尝试计数", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 15,

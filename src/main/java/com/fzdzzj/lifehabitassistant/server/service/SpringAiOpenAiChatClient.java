@@ -1,8 +1,13 @@
 package com.fzdzzj.lifehabitassistant.server.service;
 
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 /**
  * Spring AI based OpenAI Chat adapter.
@@ -22,12 +27,18 @@ public class SpringAiOpenAiChatClient implements OpenAiChatClient {
 
     @Override
     public String chat(String systemPrompt, String userPrompt) {
+        return chat(systemPrompt, List.of(), userPrompt);
+    }
+
+    @Override
+    public String chat(String systemPrompt, List<ChatTurn> history, String userPrompt) {
         try {
-            String content = chatClient.prompt()
-                    .system(systemPrompt)
-                    .user(userPrompt)
-                    .call()
-                    .content();
+            List<Message> messages = history.stream().map(this::toMessage).toList();
+            ChatClient.ChatClientRequestSpec request = chatClient.prompt().system(systemPrompt);
+            if (!messages.isEmpty()) {
+                request = request.messages(messages);
+            }
+            String content = request.user(userPrompt).call().content();
             if (content == null || content.isBlank()) {
                 throw new IllegalStateException("OpenAI response contains no message content");
             }
@@ -37,5 +48,13 @@ public class SpringAiOpenAiChatClient implements OpenAiChatClient {
         } catch (RuntimeException e) {
             throw new IllegalStateException("OpenAI request failed", e);
         }
+    }
+
+    private Message toMessage(ChatTurn turn) {
+        return switch (turn.role()) {
+            case "user" -> new UserMessage(turn.content());
+            case "assistant" -> new AssistantMessage(turn.content());
+            default -> throw new IllegalArgumentException("未知的对话角色: " + turn.role());
+        };
     }
 }

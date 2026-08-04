@@ -18,6 +18,8 @@
 
 同时把 Spring AI 的模型自动配置全部显式关闭（`spring.ai.model.* = none`）：自动配置在缺少 `spring.ai.openai.api-key` 时会强制校验并导致上下文启动失败，而本项目由 `app.ai.advice.*` 统一管理开关与密钥。未来升级 Spring Boot 4 后可切到 Spring AI 2.0，届时只需调整 Bean 装配或启用对应自动配置。
 
+多轮对话在同一个适配器上增加了带历史消息的 `chat(systemPrompt, history, userPrompt)` 重载：历史以真实的 user/assistant 消息发送，最新消息与脱敏上下文放在 user prompt 中。
+
 ## 数据流
 
 ```text
@@ -100,6 +102,36 @@ WHERE user_id = ? AND period_type = ? AND period_key = ?
 
 `source` 为 `AI` 或 `RULE_FALLBACK`；前端应把降级结果明确展示给用户。
 
+## 多轮对话（2026-08）
+
+多轮对话与显式解读共享同一套模型连接与配额桶，接口位于 `/api/v1/ai/conversations`：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/v1/ai/conversations` | 创建会话 |
+| `GET` | `/api/v1/ai/conversations` | 分页列表，按最近活动倒序 |
+| `GET` | `/api/v1/ai/conversations/{id}/messages` | 消息列表 |
+| `POST` | `/api/v1/ai/conversations/{id}/messages` | 发送消息 |
+| `DELETE` | `/api/v1/ai/conversations/{id}` | 删除会话（级联删除消息） |
+
+数据模型：`ai_conversations`（用户归属、标题、创建/最近活动时间）+ `ai_conversation_messages`（角色 USER/ASSISTANT、来源 AI/RULE_FALLBACK、内容、模型名、是否计费、时间），V11 迁移建表，消息外键 `ON DELETE CASCADE`。
+
+发送流程：先保存用户消息 → 携带最近 N 轮历史（默认 10 轮）与最近 N 天（默认 7）脱敏聚合指标/规则结论调用模型 → 保存 AI 回复；模型失败或配额不足时保存规则降级回复（`source=RULE_FALLBACK`），其中失败尝试计费、未发起调用的降级不计费，与报告解读完全一致。
+
+配额逻辑已抽成共享的 `AiQuotaService`（`AiAdviceService` 与 `AiConversationService` 共用），管理员在 `/api/v1/admin/quotas/{userId}` 设置的用户级日/月额度对两个功能同时生效。
+
+对话专用配置（仍需 `OPENAI_API_KEY`/`OPENAI_MODEL`）：
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `AI_CONVERSATION_ENABLED` | `false` | 对话功能总开关 |
+| `AI_CONVERSATION_CONTEXT_DAYS` | `7` | 携带聚合指标的天数（1–366） |
+| `AI_CONVERSATION_MAX_HISTORY_ROUNDS` | `10` | 携带最近多少轮（1–50） |
+| `AI_CONVERSATION_MAX_MESSAGE_LENGTH` | `2000` | 单条消息最大字符数 |
+| `AI_CONVERSATION_PROMPT_VERSION` | `v1` | 对话系统提示词版本 |
+
+脱敏边界与显式解读一致：模型只收到聚合数字、规则风险/建议与用户自己发送的对话文本，不包含用户名、账号 ID、备注或原始记录。
+
 ## 脱敏与提示词
 
 发给模型的用户消息只包含：天数、记录数、睡眠/饮食/运动/补水均值、风险饮品总量、连续天数、按类型的运动与饮品聚合、规则风险与建议列表。不包含用户名、用户 ID、备注、原始明细；历史表 `content` 字段也只存这段结构化内容。
@@ -112,6 +144,9 @@ WHERE user_id = ? AND period_type = ? AND period_key = ?
 - `AiAdviceServiceTest`：禁用、无数据、成功、供应商失败、日/月配额、按用户计费与历史归属、自然周边界。
 - `AiAdviceHttpIntegrationTest`：未授权 401、禁用时降级并保存历史、报表附加最近建议、用户隔离。
 - `ReportExporterTest`：Excel/PDF 包含或省略 AI 解读。
+- `AiConversationServiceTest`：创建/列表/删除、多轮上下文限制、脱敏断言、成功与失败/配额降级、用户隔离、用户级配额覆盖。
+- `AiConversationHttpIntegrationTest`：401、创建/列表/删除流、消息落库与降级、用户隔离、删除级联、消息正序、分页、超长消息 400。
+- `AiConversationQuotaHttpIntegrationTest`：真实配额服务下配额耗尽不调用模型、不计数。
 
 ## 未来升级路径
 

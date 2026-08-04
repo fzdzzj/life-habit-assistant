@@ -1,11 +1,18 @@
 package com.fzdzzj.lifehabitassistant;
 
+import com.fzdzzj.lifehabitassistant.server.service.OpenAiChatClient;
 import com.fzdzzj.lifehabitassistant.server.service.SpringAiOpenAiChatClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.MessageType;
+import org.mockito.ArgumentCaptor;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -53,5 +60,28 @@ class SpringAiOpenAiChatClientTest {
                 IllegalStateException.class, () -> client.chat(SYSTEM_PROMPT, USER_PROMPT));
         assertEquals("OpenAI request failed", ex.getMessage());
         assertEquals("provider down", ex.getCause().getMessage());
+    }
+
+    @Test
+    void multiTurnShouldDelegateHistoryAndLatestUserMessage() {
+        when(chatClient.prompt()).thenReturn(request);
+        when(request.system(SYSTEM_PROMPT)).thenReturn(request);
+        when(request.messages(anyList())).thenReturn(request);
+        when(request.user(USER_PROMPT)).thenReturn(request);
+        when(request.call()).thenReturn(response);
+        when(response.content()).thenReturn("AI answer");
+
+        List<OpenAiChatClient.ChatTurn> history = List.of(
+                new OpenAiChatClient.ChatTurn("user", "Q1"),
+                new OpenAiChatClient.ChatTurn("assistant", "A1"));
+
+        assertEquals("AI answer", client.chat(SYSTEM_PROMPT, history, USER_PROMPT));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Message>> messagesCaptor = ArgumentCaptor.forClass(List.class);
+        verify(request).messages(messagesCaptor.capture());
+        assertEquals(List.of(MessageType.USER, MessageType.ASSISTANT),
+                messagesCaptor.getValue().stream().map(Message::getMessageType).toList());
+        verify(request).user(USER_PROMPT);
     }
 }
