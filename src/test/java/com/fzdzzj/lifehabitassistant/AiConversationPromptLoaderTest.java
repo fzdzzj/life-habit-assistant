@@ -34,6 +34,6 @@ class AiConversationPromptLoaderTest {
     }
 
     private AiConversationProperties properties(String version) {
-        return new AiConversationProperties(false, 7, 10, 2000, version);
+        return new AiConversationProperties(false, 7, 10, 2000, 300, version);
     }
 }

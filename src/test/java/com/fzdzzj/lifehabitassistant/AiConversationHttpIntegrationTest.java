@@ -55,6 +55,12 @@ class AiConversationHttpIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("content", "你好"))))
                 .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/ai/conversations/1/messages/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("content", "你好"))))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/ai/conversations/1/messages/cancel"))
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(delete("/api/v1/ai/conversations/1"))
                 .andExpect(status().isUnauthorized());
     }
@@ -201,6 +207,43 @@ class AiConversationHttpIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content.length()").value(1));
+    }
+
+    @Test
+    void streamShouldReturn404ForOtherUsersConversation() throws Exception {
+        String owner = register("sown-" + UUID.randomUUID());
+        String other = register("soth-" + UUID.randomUUID());
+        Long id = createConversation(owner, "私密");
+
+        mockMvc.perform(post("/api/v1/ai/conversations/{id}/messages/stream", id)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + other)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("content", "偷看"))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(40400));
+    }
+
+    @Test
+    void cancelShouldReturn409WhenNoGenerationIsActive() throws Exception {
+        String token = register("conv-cancel-" + UUID.randomUUID());
+        Long id = createConversation(token, null);
+
+        mockMvc.perform(post("/api/v1/ai/conversations/{id}/messages/cancel", id)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(40900));
+    }
+
+    @Test
+    void cancelShouldReturn404ForOtherUsersConversation() throws Exception {
+        String owner = register("cown-" + UUID.randomUUID());
+        String other = register("coth-" + UUID.randomUUID());
+        Long id = createConversation(owner, "私密");
+
+        mockMvc.perform(post("/api/v1/ai/conversations/{id}/messages/cancel", id)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + other))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(40400));
     }
 
     private String register(String username) throws Exception {

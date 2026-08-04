@@ -1,6 +1,7 @@
 package com.fzdzzj.lifehabitassistant.config;
 
 import com.fzdzzj.lifehabitassistant.server.service.AiAdviceProperties;
+import com.fzdzzj.lifehabitassistant.server.service.AiConversationProperties;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
@@ -25,24 +26,41 @@ public class AiAdviceConfig {
      */
     @Bean
     ChatClient aiAdviceChatClient(AiAdviceProperties properties) {
+        return buildChatClient(properties.baseUrl(), properties.apiKey(), properties.model(),
+                properties.timeoutSeconds());
+    }
+
+    /**
+     * Streaming conversation client with a longer timeout than the sync
+     * advice client so long answers are not cut off mid-stream. It reuses the
+     * same provider key/model/base URL as the sync client.
+     */
+    @Bean
+    ChatClient aiConversationStreamChatClient(AiAdviceProperties properties,
+                                              AiConversationProperties conversationProperties) {
+        return buildChatClient(properties.baseUrl(), properties.apiKey(), properties.model(),
+                conversationProperties.streamTimeoutSeconds());
+    }
+
+    private ChatClient buildChatClient(String baseUrl, String apiKey, String model, int timeoutSeconds) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(Duration.ofSeconds(properties.timeoutSeconds()));
-        requestFactory.setReadTimeout(Duration.ofSeconds(properties.timeoutSeconds()));
+        requestFactory.setConnectTimeout(Duration.ofSeconds(timeoutSeconds));
+        requestFactory.setReadTimeout(Duration.ofSeconds(timeoutSeconds));
         RestClient.Builder restClientBuilder = RestClient.builder().requestFactory(requestFactory);
 
         OpenAiApi api = OpenAiApi.builder()
-                .baseUrl(properties.baseUrl())
-                .apiKey(properties.apiKey())
+                .baseUrl(baseUrl)
+                .apiKey(apiKey)
                 .restClientBuilder(restClientBuilder)
                 .build();
         OpenAiChatOptions options = OpenAiChatOptions.builder()
-                .model(properties.model())
+                .model(model)
                 .temperature(0.4)
                 .build();
-        OpenAiChatModel model = OpenAiChatModel.builder()
+        OpenAiChatModel chatModel = OpenAiChatModel.builder()
                 .openAiApi(api)
                 .defaultOptions(options)
                 .build();
-        return ChatClient.builder(model).build();
+        return ChatClient.builder(chatModel).build();
     }
 }

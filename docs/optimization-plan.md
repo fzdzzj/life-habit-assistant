@@ -145,6 +145,17 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 | 启动缺陷修复 | 冒烟发现并修复两处“迁移 DDL 与 Hibernate 校验不一致”：`export_tasks.file_content`（V8 LONGBLOB ↔ 实体 tinyblob）改实体为 `LONGVARBINARY`；`refresh_tokens/password_reset_tokens.token_hash`（V9 CHAR(64) ↔ varchar(64)）改实体为 `CHAR` |
 | 防回归 | 新增 `MySqlContextBootIntegrationTest`：真实 MySQL 上 Flyway V1–V11 + 默认 `ddl-auto=validate` 全上下文启动（本地无 Docker 跳过，CI 必跑） |
 
+### AI 对话流式输出（Issue #82）
+
+| 优化项 | 问题 | 方案 | 落点 | 验证 |
+| --- | --- | --- | --- | --- |
+| SSE 流式对话 | 同步发送在模型生成期间阻塞请求线程，长回答体验差且易超时 | 新增 `POST /api/v1/ai/conversations/{id}/messages/stream`，事件协议 `start`/`delta`/`complete`/`fallback`/`error`/`cancelled`；请求线程完成事务性准备（保存用户消息、先扣配额），`ai-stream` 线程订阅模型增量，完成/降级后新事务持久化助手消息 | [AiConversationStreamService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AiConversationStreamService.java)、[AiConversationStreamCoordinator.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AiConversationStreamCoordinator.java)、[AiConversationController.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/controller/AiConversationController.java) | `AiConversationStreamServiceTest` 8 项（正常流/降级/取消/替换/404/409）；真实端口 `AiConversationStreamHttpIntegrationTest` 验证 SSE 事件与落库 |
+| 每会话单任务与取消 | 同会话并发生成会互相覆盖，前端无法停止 | 每会话仅一个进行中任务；新流式或同步发送取消旧流式任务；`POST .../messages/cancel` 主动取消；取消/断开/超时保存已收文本为 AI 消息，否则保存规则降级 | [AiConversationStreamCoordinator.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AiConversationStreamCoordinator.java) | `AiConversationStreamCoordinatorTest` 6 项（取消/替换/幂等/归属）；HTTP 集成测试 409/404/401 |
+| 流式超时配置 | 同步超时 30s 会截断长回答 | 新增 `AI_CONVERSATION_STREAM_TIMEOUT_SECONDS`（默认 300）与流式专用 ChatClient bean；`SseEmitter` 同配置超时 | [AiConversationProperties.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/AiConversationProperties.java)、[AiAdviceConfig.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/AiAdviceConfig.java) | 配置校验（1–3600）与 bean 装配由上下文启动测试覆盖 |
+| 异步鉴权恢复 | SSE 异步 dispatch 重走 Security 过滤链时 JWT 上下文丢失，响应已提交后返回 403 并中断流 | `JwtAuthenticationFilter` 将认证写入 `RequestAttributeSecurityContextRepository`，异步 dispatch 从 request 属性恢复 | [JwtAuthenticationFilter.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/JwtAuthenticationFilter.java) | 真实端口 SSE 测试通过；全量认证/权限测试回归通过 |
+
+> 取舍：流式只做对话，报告解读保持同步（整段 JSON 流式收益低）；流式状态机与事件协议参考 `D:\code\rag\back\RAG` 的 `RagStreamSessionManager`，仅借鉴不迁移实现。
+
 ## 三、关键取舍（防止“换个思路做坏”的约束）
 
 - **配额为什么用独立表而不是历史表计数**：历史表无法区分“调用失败（应计费）”和“未调用降级（不应计费）”；独立表只记录已发起的模型请求，语义干净。
@@ -195,3 +206,4 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 - [x] 报表缓存与异步导出：`mvn test` 122 项通过（1 项 Testcontainers 跳过）；缓存命中/失效、导出任务状态流转、用户隔离、HTTP 轮询与下载全覆盖；Flyway V8 真实 MySQL 迁移由 CI 的 Testcontainers 用例验证。
 - [x] AI 多轮对话：`mvn test` 208 项通过（1 项 Testcontainers 跳过）；会话/消息用户隔离、多轮上下文限制、模型失败与配额耗尽降级、删除级联、共享配额与上下文脱敏全部覆盖；Flyway V11 真实 MySQL 迁移由 CI 的 Testcontainers 用例验证。
 - [x] 扩展性约束与交付验收：`mvn test` 216 项通过、0 失败（Docker 可用时 Testcontainers 两用例也执行并通过；无 Docker 时自动跳过）；架构约束 7 项、MySQL 全上下文启动回归、V1–V11 双跑全部验证；本地 MySQL80 冒烟认证/管理 API/任务生命周期/AI 对话全部走通，并修复 2 处迁移 DDL 与实体类型不一致（V8 LONGBLOB、V9 CHAR(64)）。
+- [x] AI 对话流式输出：`mvn test` 238 项通过、0 失败、0 跳过（含 Testcontainers 两用例）；SSE 事件协议、降级/取消/替换/断开语义、同会话单任务互斥、越权与异步鉴权恢复全部覆盖。

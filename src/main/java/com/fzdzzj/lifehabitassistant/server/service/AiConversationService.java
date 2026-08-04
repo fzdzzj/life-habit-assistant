@@ -111,6 +111,33 @@ public class AiConversationService {
     @Transactional
     public AiConversationDtos.SendMessageResponse send(Long conversationId,
                                                        AiConversationDtos.SendMessageRequest request) {
+        PreparedStream prepared = prepareStream(conversationId, request);
+        if (!prepared.callModel()) {
+            return completeStream(conversationId, prepared.user(), MessageSource.RULE_FALLBACK,
+                    prepared.fallbackReply(), null, false);
+        }
+        try {
+            String raw = chatClient.chat(prepared.systemPrompt(), prepared.history(),
+                    prepared.userPrompt());
+            return completeStream(conversationId, prepared.user(), MessageSource.AI, raw,
+                    prepared.modelName(), true);
+        } catch (RuntimeException ex) {
+            log.warn("OpenAI conversation failed for user {}: {}",
+                    prepared.user().getId(), ex.toString());
+            return completeStream(conversationId, prepared.user(), MessageSource.RULE_FALLBACK,
+                    prepared.fallbackReply(), prepared.modelName(), true);
+        }
+    }
+
+    /**
+     * First half of a conversation round: validates ownership, trims and saves
+     * the user message, builds the sanitized context and reserves quota. The
+     * result tells the caller whether the model may be called (quota reserved)
+     * or a rule fallback must be returned.
+     */
+    @Transactional
+    public PreparedStream prepareStream(Long conversationId,
+                                        AiConversationDtos.SendMessageRequest request) {
         User user = currentUser.require();
         AiConversation conversation = requireOwned(conversationId, user);
         String content = request.content().trim();
@@ -125,24 +152,36 @@ public class AiConversationService {
         conversation.touch();
         conversations.save(conversation);
 
+        String fallback = fallbackReply(context.rule());
         if (!eligible()) {
-            return reply(user, conversation, MessageSource.RULE_FALLBACK,
-                    fallbackReply(context.rule()), null, false);
+            return new PreparedStream(user, conversationId, null, List.of(), null, fallback, null, false);
         }
         try {
             quotaService.occupy(user);
         } catch (AiQuotaService.QuotaExceededException ex) {
-            return reply(user, conversation, MessageSource.RULE_FALLBACK,
-                    fallbackReply(context.rule()), null, false);
+            return new PreparedStream(user, conversationId, null, List.of(), null, fallback, null, false);
         }
-        try {
-            String raw = chatClient.chat(promptLoader.load(), turns(recent), userPrompt(context, content));
-            return reply(user, conversation, MessageSource.AI, raw, aiProperties.model(), true);
-        } catch (RuntimeException ex) {
-            log.warn("OpenAI conversation failed for user {}: {}", user.getId(), ex.toString());
-            return reply(user, conversation, MessageSource.RULE_FALLBACK,
-                    fallbackReply(context.rule()), aiProperties.model(), true);
-        }
+        return new PreparedStream(user, conversationId, promptLoader.load(), turns(recent),
+                userPrompt(context, content), fallback, aiProperties.model(), true);
+    }
+
+    /**
+     * Second half of a conversation round: persists the assistant message and
+     * returns it with the live quota snapshot. Used by both sync sends and
+     * streaming finalization.
+     */
+    @Transactional
+    public AiConversationDtos.SendMessageResponse completeStream(Long conversationId, User user,
+                                                                 MessageSource source, String content,
+                                                                 String modelName, boolean callCounted) {
+        AiConversation conversation = requireOwned(conversationId, user);
+        AiConversationMessage saved = saveMessage(conversation, ConversationRole.ASSISTANT, source,
+                content, modelName, callCounted);
+        conversation.touch();
+        conversations.save(conversation);
+        AiQuotaService.QuotaSnapshot quota = quotaService.usage(user);
+        return new AiConversationDtos.SendMessageResponse(toMessageResponse(saved),
+                quota.dailyUsed(), quota.dailyLimit(), quota.monthlyUsed(), quota.monthlyLimit());
     }
 
     @Transactional
@@ -151,16 +190,6 @@ public class AiConversationService {
         requireOwned(conversationId, user);
         messages.deleteByConversationId(conversationId);
         conversations.deleteById(conversationId);
-    }
-
-    private AiConversationDtos.SendMessageResponse reply(User user, AiConversation conversation,
-                                                         MessageSource source, String content,
-                                                         String modelName, boolean callCounted) {
-        AiConversationMessage saved = saveMessage(conversation, ConversationRole.ASSISTANT, source,
-                content, modelName, callCounted);
-        AiQuotaService.QuotaSnapshot quota = quotaService.usage(user);
-        return new AiConversationDtos.SendMessageResponse(toMessageResponse(saved),
-                quota.dailyUsed(), quota.dailyLimit(), quota.monthlyUsed(), quota.monthlyLimit());
     }
 
     private AiConversationMessage saveMessage(AiConversation conversation, ConversationRole role,
@@ -262,5 +291,14 @@ public class AiConversationService {
     }
 
     private record SanitizedContext(AnalysisDtos.AnalysisResponse rule, String json) {
+    }
+
+    /**
+     * Immutable snapshot produced by {@link #prepareStream} and consumed by
+     * either the sync chat path or the streaming service.
+     */
+    public record PreparedStream(User user, Long conversationId, String systemPrompt,
+                                 List<OpenAiChatClient.ChatTurn> history, String userPrompt,
+                                 String fallbackReply, String modelName, boolean callModel) {
     }
 }

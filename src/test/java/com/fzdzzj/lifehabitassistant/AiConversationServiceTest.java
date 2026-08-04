@@ -78,7 +78,7 @@ class AiConversationServiceTest {
 
         aiProperties = new AiAdviceProperties(true, "sk-test", "gpt-demo",
                 "https://api.openai.com/v1", 3, 30, 30, "v1");
-        conversationProperties = new AiConversationProperties(true, 7, 10, 2000, "v1");
+        conversationProperties = new AiConversationProperties(true, 7, 10, 2000, 300, "v1");
         service = service(aiProperties, conversationProperties);
     }
 
@@ -178,7 +178,7 @@ class AiConversationServiceTest {
 
     @Test
     void sendShouldLimitHistoryToConfiguredRounds() {
-        conversationProperties = new AiConversationProperties(true, 7, 2, 2000, "v1");
+        conversationProperties = new AiConversationProperties(true, 7, 2, 2000, 300, "v1");
         service = service(aiProperties, conversationProperties);
         List<AiConversationMessage> six = List.of(
                 message(ConversationRole.ASSISTANT), message(ConversationRole.USER),
@@ -229,7 +229,7 @@ class AiConversationServiceTest {
 
     @Test
     void sendShouldFallbackWithoutCallingProviderWhenDisabled() {
-        conversationProperties = new AiConversationProperties(false, 7, 10, 2000, "v1");
+        conversationProperties = new AiConversationProperties(false, 7, 10, 2000, 300, "v1");
         service = service(aiProperties, conversationProperties);
         when(messages.findByConversationIdOrderByIdDesc(any(), any())).thenReturn(List.of());
 
@@ -253,7 +253,7 @@ class AiConversationServiceTest {
 
     @Test
     void sendShouldRejectOversizedMessage() {
-        conversationProperties = new AiConversationProperties(true, 7, 10, 10, "v1");
+        conversationProperties = new AiConversationProperties(true, 7, 10, 10, 300, "v1");
         service = service(aiProperties, conversationProperties);
 
         assertThrows(ApiException.class, () ->

@@ -75,6 +75,7 @@ app:
       context-days: ${AI_CONVERSATION_CONTEXT_DAYS:7}
       max-history-rounds: ${AI_CONVERSATION_MAX_HISTORY_ROUNDS:10}
       max-message-length: ${AI_CONVERSATION_MAX_MESSAGE_LENGTH:2000}
+      stream-timeout-seconds: ${AI_CONVERSATION_STREAM_TIMEOUT_SECONDS:300}
       prompt-version: ${AI_CONVERSATION_PROMPT_VERSION:v1}
   drink:
     hydration-ratios:
