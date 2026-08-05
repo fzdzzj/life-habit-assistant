@@ -73,8 +73,8 @@ class ArchitectureConstraintTest {
                     .toList();
         }
         // 放行清单：新增迁移时必须同步更新；已发布的迁移文件不得修改。
-        assertEquals(List.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11), versions,
-                "迁移必须按 V1..Vn 追加且版本号不重复；新增迁移时同步更新本清单");
+          assertEquals(List.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12), versions,
+                  "迁移必须按 V1..Vn 追加且版本号不重复；新增迁移时同步更新本清单");
     }
 
     @Test

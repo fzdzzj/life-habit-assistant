@@ -7,6 +7,8 @@ import com.fzdzzj.lifehabitassistant.pojo.ExportTaskDtos;
 import com.fzdzzj.lifehabitassistant.server.service.ExportTaskService;
 import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Pattern;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -58,13 +60,13 @@ public class ExportTaskController {
     }
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<byte[]> download(@PathVariable Long id) {
+    public ResponseEntity<Resource> download(@PathVariable Long id) {
         ExportTaskService.ExportFile file = exports.file(id);
         boolean xlsx = file.fileName().endsWith(".xlsx");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.fileName() + "\"")
                 .contentType(MediaType.parseMediaType(xlsx ? XLSX_MEDIA_TYPE : MediaType.APPLICATION_PDF_VALUE))
-                .body(file.content());
+                .body(new InputStreamResource(file.content()));
     }
 
     private YearMonth parseMonth(String month) {

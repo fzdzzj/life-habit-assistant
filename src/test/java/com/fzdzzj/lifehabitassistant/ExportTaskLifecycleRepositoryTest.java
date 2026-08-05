@@ -61,7 +61,7 @@ class ExportTaskLifecycleRepositoryTest {
     void markCancelledRejectsFinishedTask() {
         User user = users.save(new User("tcf-" + UUID.randomUUID(), "hash"));
         ExportTask succeeded = tasks.saveAndFlush(task(user));
-        succeeded.succeed(new byte[]{1}, "done.xlsx");
+        succeeded.succeed("export/legacy.xlsx", "done.xlsx");
         tasks.saveAndFlush(succeeded);
 
         assertEquals(0, tasks.markCancelled(succeeded.getId(), user.getId(), LocalDateTime.now()));
@@ -92,16 +92,17 @@ class ExportTaskLifecycleRepositoryTest {
         assertEquals(1, tasks.markRunning(running.getId(), LocalDateTime.now()));
 
         LocalDateTime now = LocalDateTime.now();
-        assertEquals(1, tasks.markSucceeded(running.getId(), "out.xlsx", new byte[]{1, 2}, now));
+        assertEquals(1, tasks.markSucceeded(running.getId(), "out.xlsx", "export/out.xlsx", now));
         em.clear();
         ExportTask succeeded = tasks.findById(running.getId()).orElseThrow();
         assertEquals(ExportTaskStatus.SUCCEEDED, succeeded.getStatus());
         assertEquals("out.xlsx", succeeded.getFileName());
+        assertEquals("export/out.xlsx", succeeded.getFilePath());
 
         ExportTask cancelled = tasks.saveAndFlush(task(user));
         assertEquals(1, tasks.markRunning(cancelled.getId(), LocalDateTime.now()));
         assertEquals(1, tasks.markCancelled(cancelled.getId(), user.getId(), LocalDateTime.now()));
-        assertEquals(0, tasks.markSucceeded(cancelled.getId(), "late.xlsx", new byte[]{3}, now));
+        assertEquals(0, tasks.markSucceeded(cancelled.getId(), "late.xlsx", "export/late.xlsx", now));
         em.clear();
         assertEquals(ExportTaskStatus.CANCELLED, tasks.findById(cancelled.getId()).orElseThrow().getStatus());
 
@@ -141,10 +142,10 @@ class ExportTaskLifecycleRepositoryTest {
     void cleanupQueryReturnsOnlySucceededTasksOlderThanCutoff() {
         User user = users.save(new User("tcu-" + UUID.randomUUID(), "hash"));
         ExportTask old = tasks.saveAndFlush(task(user));
-        old.succeed(new byte[]{1}, "old.xlsx");
+        old.succeed("export/old.xlsx", "old.xlsx");
         tasks.saveAndFlush(old);
         ExportTask fresh = tasks.saveAndFlush(task(user));
-        fresh.succeed(new byte[]{2}, "fresh.xlsx");
+        fresh.succeed("export/fresh.xlsx", "fresh.xlsx");
         tasks.saveAndFlush(fresh);
         ExportTask cancelled = tasks.saveAndFlush(task(user));
         cancelled.cancel();

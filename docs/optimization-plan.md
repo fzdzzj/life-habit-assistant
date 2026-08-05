@@ -166,6 +166,17 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 
 > 取舍：缓存只缓存 AI 成功结果，规则降级不缓存，避免 AI 恢复后被旧降级内容阻挡；命中缓存不新增 history，报告/导出快照继续引用首次生成记录。
 
+### 导出文件外置（Issue #86）
+
+| 优化项 | 问题 | 方案 | 落点 | 验证 |
+| --- | --- | --- | --- | --- |
+| 存储抽象 | 导出文件写 LONGBLOB，数据库只增不减；下载整体读入内存 | `ExportFileStorage` 接口 + `LocalExportFileStorage`（默认 `./data/exports`）/ `S3ExportFileStorage`（MinIO 客户端，兼容 AWS S3/MinIO/COS）；`app.export.storage.type=local\|s3` 切换，S3 必填配置缺失启动快速失败 | [ExportFileStorage.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/ExportFileStorage.java)、[LocalExportFileStorage.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/LocalExportFileStorage.java)、[S3ExportFileStorage.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/S3ExportFileStorage.java)、[ExportProperties.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/ExportProperties.java) | `LocalExportFileStorageTest` 4 项、`S3ExportFileStorageTest` 4 项、`ExportPropertiesTest` 4 项 |
+| V12 与链路改造 | 新文件仍写库、下载读库、清理不感知存储 | `export_tasks.file_path`（V12）；worker 先写存储再 `markSucceeded(filePath)`，状态未落库时回删文件；下载改 `Resource` 流式，`file_path` 缺失返回 404；清理先删存储文件再删行，删除失败保留行 | [V12](../src/main/resources/db/migration/V12__add_export_file_path.sql)、[ExportTaskWorker.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/ExportTaskWorker.java)、[ExportTaskService.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/ExportTaskService.java)、[ExportTaskRepository.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/dao/ExportTaskRepository.java) | `ExportTaskWorkerTest`、`ExportTaskServiceTest`、`ExportTaskLifecycleRepositoryTest` 适配并新增删除失败保留行用例 |
+| 存量 LONGBLOB 迁移 | 旧库升级后历史文件仍在数据库 | `ExportFileMigrator` 启动分批迁移：写存储 → 条件回填 `file_path` → 清空 `file_content`；单条失败记录日志继续、不阻塞启动；`app.export.backfill-enabled`（默认 true）可关闭 | [ExportFileMigrator.java](../src/main/java/com/fzdzzj/lifehabitassistant/server/service/ExportFileMigrator.java) | `ExportFileMigratorTest` 4 项（批量/单条失败/并发回填/开关）；MySQL 集成测试手工造存量行并验证落盘、回填与清空 |
+| 迁移与回归 | 新迁移与实体必须一致 | Testcontainers 真实 MySQL：V1-V12 双跑全成功 + 全上下文 `ddl-auto=validate` 启动（该用例显式覆盖 create-drop，避免测试环境掩盖迁移/实体不一致） | [MySqlContextBootIntegrationTest.java](../src/test/java/com/fzdzzj/lifehabitassistant/MySqlContextBootIntegrationTest.java)、[FlywayMySqlMigrationIntegrationTest.java](../src/test/java/com/fzdzzj/lifehabitassistant/FlywayMySqlMigrationIntegrationTest.java) | `mvn test` 270 项 0 失败 0 跳过（含 Testcontainers 两用例） |
+
+> 取舍：`file_content` 列本期保留（供迁移读取），确认迁移完成后可在后续独立迁移中 DROP，避免旧库升级即丢数据；下载用 `Resource` 流式而非分片，报表量级足够，不引入 Range 支持。
+
 ## 三、关键取舍（防止“换个思路做坏”的约束）
 
 - **配额为什么用独立表而不是历史表计数**：历史表无法区分“调用失败（应计费）”和“未调用降级（不应计费）”；独立表只记录已发起的模型请求，语义干净。
@@ -218,3 +229,4 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 - [x] 扩展性约束与交付验收：`mvn test` 216 项通过、0 失败（Docker 可用时 Testcontainers 两用例也执行并通过；无 Docker 时自动跳过）；架构约束 7 项、MySQL 全上下文启动回归、V1–V11 双跑全部验证；本地 MySQL80 冒烟认证/管理 API/任务生命周期/AI 对话全部走通，并修复 2 处迁移 DDL 与实体类型不一致（V8 LONGBLOB、V9 CHAR(64)）。
 - [x] AI 对话流式输出：`mvn test` 238 项通过、0 失败、0 跳过（含 Testcontainers 两用例）；SSE 事件协议、降级/取消/替换/断开语义、同会话单任务互斥、越权与异步鉴权恢复全部覆盖。
 - [x] AI 解读结构化输出与同周期结果缓存：`mvn test` 251 项通过、0 失败、0 跳过（含 Testcontainers 两用例）；结构化输出成功/畸形/字段缺失降级、缓存命中/刷新/写路径失效/降级不缓存全部覆盖；本地 MySQL 冒烟验证 AI 解读 `cached=false`、`refresh=true`、流式 SSE `event:fallback` 与取消 409（无 API key 时验证 fallback 路径，缓存命中语义由单元测试覆盖）。
+- [x] 导出文件外置：`mvn test` 270 项通过、0 失败、0 跳过（含 Testcontainers 两用例）；local/S3 存储、存量 LONGBLOB 启动迁移（真实 MySQL 验证落盘/回填/清空）、下载流式、清理先删文件失败保留行全部覆盖；本地 MySQL 冒烟见 Issue #86。

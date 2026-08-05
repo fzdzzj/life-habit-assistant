@@ -18,3 +18,9 @@ app:
       login-per-ip: 10000
       login-failures: 1000
       login-cooldown: 1h
+  export:
+    backfill-enabled: false
+    storage:
+      type: local
+      local:
+        directory: ./target/test-exports

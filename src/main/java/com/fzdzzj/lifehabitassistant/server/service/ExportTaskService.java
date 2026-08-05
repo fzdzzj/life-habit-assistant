@@ -20,12 +20,14 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.InputStream;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -39,14 +41,17 @@ public class ExportTaskService {
     private final ExportProperties properties;
     private final PaginationProperties pagination;
     private final CurrentUser currentUser;
+    private final ExportFileStorage storage;
 
     public ExportTaskService(ExportTaskRepository tasks, ExportTaskWorker worker, ExportProperties properties,
-                             PaginationProperties pagination, CurrentUser currentUser) {
+                             PaginationProperties pagination, CurrentUser currentUser,
+                             ExportFileStorage storage) {
         this.tasks = tasks;
         this.worker = worker;
         this.properties = properties;
         this.pagination = pagination;
         this.currentUser = currentUser;
+        this.storage = storage;
     }
 
     public ExportTaskDtos.ExportTaskResponse create(ExportReportType type, ExportFormat format,
@@ -109,9 +114,10 @@ public class ExportTaskService {
     }
 
     /**
-     * Deletes SUCCEEDED tasks older than the configured retention window
-     * together with their stored files (file content lives in the row).
-     * Runs daily; also directly callable from tests.
+     * Deletes SUCCEEDED tasks older than the configured retention window.
+     * Files are removed from external storage first; a task whose file cannot
+     * be deleted is kept so the next run can retry. Runs daily and is directly
+     * callable from tests.
      */
     @Scheduled(cron = "${app.export.cleanup-cron:0 0 3 * * *}")
     @Transactional
@@ -123,18 +129,43 @@ public class ExportTaskService {
             if (batch.isEmpty()) {
                 return;
             }
+            List<Long> expiredIds = new ArrayList<>();
             for (ExportTask task : batch) {
+                if (task.getFilePath() != null && !task.getFilePath().isBlank()) {
+                    try {
+                        storage.delete(task.getFilePath());
+                    } catch (RuntimeException ex) {
+                        log.error("Keep expired export task id={} because its file could not be deleted",
+                                task.getId(), ex);
+                        continue;
+                    }
+                }
                 log.info("Cleaning up expired export task id={} fileName={} createdAt={}",
                         task.getId(), task.getFileName(), task.getCreatedAt());
+                expiredIds.add(task.getId());
             }
-            tasks.deleteAllByIdInBatch(batch.stream().map(ExportTask::getId).toList());
+            if (!expiredIds.isEmpty()) {
+                tasks.deleteAllByIdInBatch(expiredIds);
+            }
         }
     }
 
     public ExportFile file(Long id) {
         ExportTask task = requireOwned(id);
         if (task.getStatus() == ExportTaskStatus.SUCCEEDED) {
-            return new ExportFile(task.getFileName(), task.getFileContent());
+            String filePath = task.getFilePath();
+            if (filePath == null || filePath.isBlank()) {
+                throw ApiException.notFound("导出文件不存在或已被清理");
+            }
+            try {
+                return new ExportFile(task.getFileName(), storage.load(filePath));
+            } catch (ExportFileNotFoundException ex) {
+                log.warn("Export file missing task={} path={}", task.getId(), filePath);
+                throw ApiException.notFound("导出文件不存在或已被清理");
+            } catch (RuntimeException ex) {
+                log.error("Failed to read export file task={} path={}", task.getId(), filePath, ex);
+                throw ex;
+            }
         }
         if (task.getStatus() == ExportTaskStatus.CANCELLED) {
             throw ApiException.conflict("导出任务已取消");
@@ -206,6 +237,6 @@ public class ExportTaskService {
                 task.getErrorMessage(), task.getCreatedAt(), task.getStartedAt(), task.getFinishedAt());
     }
 
-    public record ExportFile(String fileName, byte[] content) {
+    public record ExportFile(String fileName, InputStream content) {
     }
 }

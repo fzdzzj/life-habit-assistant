@@ -16,6 +16,15 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ExportTaskRepository extends JpaRepository<ExportTask, Long> {
+
+    interface LegacyExportContent {
+        Long getId();
+
+        String getFileName();
+
+        byte[] getFileContent();
+    }
+
     @EntityGraph(attributePaths = "user")
     Optional<ExportTask> findWithUserById(Long id);
 
@@ -44,6 +53,32 @@ public interface ExportTaskRepository extends JpaRepository<ExportTask, Long> {
     Page<ExportTask> findWithUserByUserId(@Param("userId") Long userId, Pageable pageable);
 
     List<ExportTask> findByStatusAndCreatedAtBefore(ExportTaskStatus status, LocalDateTime cutoff, Pageable pageable);
+
+    /**
+     * Rows still holding legacy LONGBLOB content, oldest first, for the
+     * startup backfill that moves files to external storage.
+     */
+    @Query(value = """
+            SELECT id, file_name, file_content
+            FROM export_tasks
+            WHERE file_path IS NULL AND file_content IS NOT NULL
+            ORDER BY id
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<LegacyExportContent> findLegacyContent(@Param("limit") int limit);
+
+    /**
+     * Conditional backfill write: only succeeds when the row has not yet been
+     * externalized, so concurrent instances cannot both claim the same row.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE export_tasks
+            SET file_path = :filePath, file_content = NULL
+            WHERE id = :id AND file_path IS NULL
+            """, nativeQuery = true)
+    int markFileExternalized(@Param("id") Long id, @Param("filePath") String filePath);
 
     /**
      * Atomic PENDING -> RUNNING transition; returns 1 only for the worker that
@@ -105,12 +140,12 @@ public interface ExportTaskRepository extends JpaRepository<ExportTask, Long> {
     @Transactional
     @Query(value = """
             UPDATE export_tasks
-            SET status = 'SUCCEEDED', file_name = :fileName, file_content = :content,
+            SET status = 'SUCCEEDED', file_name = :fileName, file_path = :filePath,
                 error_message = NULL, finished_at = :now
             WHERE id = :id AND status = 'RUNNING'
             """, nativeQuery = true)
     int markSucceeded(@Param("id") Long id, @Param("fileName") String fileName,
-                      @Param("content") byte[] content, @Param("now") LocalDateTime now);
+                      @Param("filePath") String filePath, @Param("now") LocalDateTime now);
 
     /**
      * Conditional RUNNING -> FAILED write. Returns 0 when the task was

@@ -12,12 +12,16 @@ import com.fzdzzj.lifehabitassistant.pojo.PageResponse;
 import com.fzdzzj.lifehabitassistant.pojo.User;
 import com.fzdzzj.lifehabitassistant.server.dao.ExportTaskRepository;
 import com.fzdzzj.lifehabitassistant.server.service.CurrentUser;
+import com.fzdzzj.lifehabitassistant.server.service.ExportFileStorage;
+import com.fzdzzj.lifehabitassistant.server.service.ExportFileStorageException;
 import com.fzdzzj.lifehabitassistant.server.service.ExportTaskService;
 import com.fzdzzj.lifehabitassistant.server.service.ExportTaskWorker;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,6 +35,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -38,7 +43,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ExportTaskServiceTest {
-    private static final ExportProperties PROPERTIES = new ExportProperties(1826, 5, 7);
+    private static final ExportProperties PROPERTIES = new ExportProperties(1826, 5, 7, true,
+            new ExportProperties.Storage("local", new ExportProperties.Local("./target/test-exports"), null));
     private static final PaginationProperties PAGINATION = new PaginationProperties(10000);
 
     @Test
@@ -123,22 +129,58 @@ class ExportTaskServiceTest {
     }
 
     @Test
-    void fileThrowsWhilePendingAndReturnsBytesWhenSucceeded() {
+    void fileThrowsWhilePendingAndStreamsBytesWhenSucceeded() throws IOException {
         ExportTaskRepository tasks = mock(ExportTaskRepository.class);
         ExportTaskWorker worker = mock(ExportTaskWorker.class);
+        ExportFileStorage storage = mock(ExportFileStorage.class);
         User user = new User("demo", "hash");
         ExportTask pending = task(user);
         when(tasks.findByIdAndUserId(7L, 42L)).thenReturn(Optional.of(pending));
-        ExportTaskService service = service(tasks, worker, currentUser());
+        ExportTaskService service = service(tasks, worker, currentUser(), storage);
 
         ApiException conflict = assertThrows(ApiException.class, () -> service.file(7L));
         assertEquals(40900, conflict.errorCode().code());
 
         byte[] bytes = {1, 2, 3};
-        pending.succeed(bytes, "life-habit-custom-2026-01-01_2026-06-30.xlsx");
+        String fileName = "life-habit-custom-2026-01-01_2026-06-30.xlsx";
+        pending.succeed("export/7-" + fileName, fileName);
+        when(storage.load("export/7-" + fileName)).thenReturn(new ByteArrayInputStream(bytes));
         ExportTaskService.ExportFile file = service.file(7L);
-        assertArrayEquals(bytes, file.content());
-        assertEquals("life-habit-custom-2026-01-01_2026-06-30.xlsx", file.fileName());
+        assertArrayEquals(bytes, file.content().readAllBytes());
+        assertEquals(fileName, file.fileName());
+        verify(storage).load("export/7-" + fileName);
+    }
+
+    @Test
+    void fileReturnsNotFoundWhenSucceededTaskHasNoStorageReference() {
+        ExportTaskRepository tasks = mock(ExportTaskRepository.class);
+        ExportTaskWorker worker = mock(ExportTaskWorker.class);
+        ExportFileStorage storage = mock(ExportFileStorage.class);
+        User user = new User("demo", "hash");
+        ExportTask task = task(user);
+        task.succeed(null, "legacy.xlsx");
+        when(tasks.findByIdAndUserId(7L, 42L)).thenReturn(Optional.of(task));
+        ExportTaskService service = service(tasks, worker, currentUser(), storage);
+
+        ApiException ex = assertThrows(ApiException.class, () -> service.file(7L));
+
+        assertEquals(40400, ex.errorCode().code());
+        verify(storage, never()).load(any());
+    }
+
+    @Test
+    void fileRethrowsStorageFailuresThatAreNotMissingFiles() {
+        ExportTaskRepository tasks = mock(ExportTaskRepository.class);
+        ExportTaskWorker worker = mock(ExportTaskWorker.class);
+        ExportFileStorage storage = mock(ExportFileStorage.class);
+        User user = new User("demo", "hash");
+        ExportTask task = task(user);
+        task.succeed("export/7-file.xlsx", "file.xlsx");
+        when(tasks.findByIdAndUserId(7L, 42L)).thenReturn(Optional.of(task));
+        when(storage.load("export/7-file.xlsx")).thenThrow(new ExportFileStorageException("s3 down"));
+        ExportTaskService service = service(tasks, worker, currentUser(), storage);
+
+        assertThrows(ExportFileStorageException.class, () -> service.file(7L));
     }
 
     @Test
@@ -200,7 +242,7 @@ class ExportTaskServiceTest {
         ExportTaskRepository tasks = mock(ExportTaskRepository.class);
         User user = new User("demo", "hash");
         ExportTask task = task(user);
-        task.succeed(new byte[]{1}, "file.xlsx");
+        task.succeed("export/7-file.xlsx", "file.xlsx");
         when(tasks.markCancelled(eq(7L), eq(42L), any())).thenReturn(0);
         when(tasks.findByIdAndUserId(7L, 42L)).thenReturn(Optional.of(task));
         ExportTaskService service = service(tasks, mock(ExportTaskWorker.class), currentUser());
@@ -244,7 +286,7 @@ class ExportTaskServiceTest {
         ExportTaskRepository tasks = mock(ExportTaskRepository.class);
         User user = new User("demo", "hash");
         ExportTask task = task(user);
-        task.succeed(new byte[]{1}, "file.xlsx");
+        task.succeed("export/7-file.xlsx", "file.xlsx");
         when(tasks.countByUserIdAndStatus(42L, ExportTaskStatus.PENDING)).thenReturn(0L);
         when(tasks.markRetried(7L, 42L)).thenReturn(0);
         when(tasks.findByIdAndUserId(7L, 42L)).thenReturn(Optional.of(task));
@@ -283,21 +325,45 @@ class ExportTaskServiceTest {
     @Test
     void cleanupDeletesOnlyExpiredSucceededTasks() {
         ExportTaskRepository tasks = mock(ExportTaskRepository.class);
+        ExportFileStorage storage = mock(ExportFileStorage.class);
         User user = new User("demo", "hash");
         ExportTask expired = task(user);
-        expired.succeed(new byte[]{1}, "old.xlsx");
+        expired.succeed("export/old.xlsx", "old.xlsx");
         when(tasks.findByStatusAndCreatedAtBefore(eq(ExportTaskStatus.SUCCEEDED), any(), any()))
                 .thenReturn(List.of(expired), List.of());
-        ExportTaskService service = service(tasks, mock(ExportTaskWorker.class), currentUser());
+        ExportTaskService service = service(tasks, mock(ExportTaskWorker.class), currentUser(), storage);
 
         service.cleanupExpired();
 
+        verify(storage).delete("export/old.xlsx");
         verify(tasks).deleteAllByIdInBatch(any());
         verify(tasks, times(2)).findByStatusAndCreatedAtBefore(eq(ExportTaskStatus.SUCCEEDED), any(), any());
     }
 
+    @Test
+    void cleanupKeepsRowWhenStorageDeleteFails() {
+        ExportTaskRepository tasks = mock(ExportTaskRepository.class);
+        ExportFileStorage storage = mock(ExportFileStorage.class);
+        User user = new User("demo", "hash");
+        ExportTask expired = task(user);
+        expired.succeed("export/old.xlsx", "old.xlsx");
+        when(tasks.findByStatusAndCreatedAtBefore(eq(ExportTaskStatus.SUCCEEDED), any(), any()))
+                .thenReturn(List.of(expired), List.of());
+        doThrow(new RuntimeException("disk error")).when(storage).delete("export/old.xlsx");
+        ExportTaskService service = service(tasks, mock(ExportTaskWorker.class), currentUser(), storage);
+
+        service.cleanupExpired();
+
+        verify(tasks, never()).deleteAllByIdInBatch(any());
+    }
+
     private ExportTaskService service(ExportTaskRepository tasks, ExportTaskWorker worker, CurrentUser currentUser) {
-        return new ExportTaskService(tasks, worker, PROPERTIES, PAGINATION, currentUser);
+        return service(tasks, worker, currentUser, mock(ExportFileStorage.class));
+    }
+
+    private ExportTaskService service(ExportTaskRepository tasks, ExportTaskWorker worker, CurrentUser currentUser,
+                                      ExportFileStorage storage) {
+        return new ExportTaskService(tasks, worker, PROPERTIES, PAGINATION, currentUser, storage);
     }
 
     private CurrentUser currentUser() {

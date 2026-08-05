@@ -96,6 +96,8 @@ mvn spring-boot:run -Dspring-boot.run.profiles=demo
 
 大区间导出（如一年以上）不再同步阻塞请求：`POST /api/export-tasks` 创建任务后立即返回任务 ID，前端轮询 `GET /api/export-tasks/{id}` 直到 `SUCCEEDED`，再调用 `/download` 获取文件。任务按用户隔离，单用户最多 5 个待处理任务（`app.export.max-pending-per-user` 可调）；生成失败时状态为 `FAILED` 并附错误原因。周报/月报仍保留原有同步导出接口。
 
+生成文件不再写入数据库：默认保存到本地磁盘 `./data/exports`（`EXPORT_STORAGE_TYPE=local`、`EXPORT_STORAGE_LOCAL_DIRECTORY` 可改目录），也可切换 S3 兼容对象存储（`EXPORT_STORAGE_TYPE=s3`，需配置 `EXPORT_S3_ENDPOINT`/`EXPORT_S3_ACCESS_KEY`/`EXPORT_S3_SECRET_KEY`/`EXPORT_S3_BUCKET`）。数据库只保留 `file_path` 引用，下载按引用流式返回；升级前遗留的 LONGBLOB 导出文件会在应用启动时自动迁移到存储并清空（`EXPORT_STORAGE_BACKFILL_ENABLED=false` 可关闭），清理任务会同时删除存储文件与任务行。
+
 ### 身份、会话与密码找回
 
 新认证能力统一放在 `/api/v1/auth`：
@@ -180,6 +182,7 @@ AI 建议默认关闭，且只在用户显式调用 `POST /api/ai/...` 时触发
 - 报告：自然周、闰年月边界、Excel 工作表和 PDF 可打开性。
 - 报表缓存：TTL 命中/过期、按用户失效、容量上限，以及修改记录后周报立即反映新值。
 - 异步导出：任务创建、区间校验、待处理上限、用户隔离、状态流转（含失败原因）与 xlsx/pdf 下载。
+- 导出文件外置：local/S3 存储抽象、存量 LONGBLOB 启动迁移、下载流式输出、清理同步删除存储文件。
 - 每日目标：默认回落全局阈值、新建/更新同一行、重置、参数校验、用户隔离，以及自定义目标改变趋势达标与规则建议。
 - AI 建议：解析容错、禁用/无数据/供应商失败/日额度/月额度的降级、按用户计费与隔离、报告导出只读取已保存建议。
 - AI 建议结构化与缓存：结构化输出成功/畸形/字段缺失降级、同周期缓存命中不调模型不扣配额不写历史、refresh 强制刷新、写路径统一失效、规则降级不缓存。
@@ -207,6 +210,7 @@ AI 建议默认关闭，且只在用户显式调用 `POST /api/ai/...` 时触发
 ### 运行环境
 
 - 默认启用 `dev` Profile，并读取项目根目录的本地 `.env`。
+- 导出文件默认存本地 `./data/exports`；生产可设 `EXPORT_STORAGE_TYPE=s3` 并配置 `EXPORT_S3_ENDPOINT`、`EXPORT_S3_ACCESS_KEY`、`EXPORT_S3_SECRET_KEY`、`EXPORT_S3_BUCKET`（可选 `EXPORT_S3_REGION`）。旧库首次升级会自动把历史 LONGBLOB 导出文件迁移到存储。
 - `prod` Profile 关闭 OpenAPI 与 Swagger UI；部署时必须注入 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USERNAME`、`DB_PASSWORD`、`JWT_SECRET`。
 - 生产启动示例：`SPRING_PROFILES_ACTIVE=prod mvn spring-boot:run`。
 

@@ -9,11 +9,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -42,10 +39,8 @@ public class ExportTask {
     private ExportTaskStatus status;
     @Column(name = "file_name", length = 255)
     private String fileName;
-    @Lob
-    @JdbcTypeCode(SqlTypes.LONGVARBINARY)
-    @Column(name = "file_content")
-    private byte[] fileContent;
+    @Column(name = "file_path", length = 500)
+    private String filePath;
     @Column(name = "error_message", length = 500)
     private String errorMessage;
     @Column(name = "created_at", nullable = false)
@@ -71,9 +66,9 @@ public class ExportTask {
         this.createdAt = LocalDateTime.now();
     }
 
-    public void succeed(byte[] content, String fileName) {
+    public void succeed(String filePath, String fileName) {
         this.status = ExportTaskStatus.SUCCEEDED;
-        this.fileContent = content;
+        this.filePath = filePath;
         this.fileName = fileName;
         this.errorMessage = null;
         this.finishedAt = LocalDateTime.now();
@@ -122,8 +117,8 @@ public class ExportTask {
         return fileName;
     }
 
-    public byte[] getFileContent() {
-        return fileContent;
+    public String getFilePath() {
+        return filePath;
     }
 
     public String getErrorMessage() {
