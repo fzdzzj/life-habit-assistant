@@ -48,10 +48,11 @@ class LocalExportFileStorageTest {
     @Test
     void rejectsKeysEscapingRoot() {
         LocalExportFileStorage storage = new LocalExportFileStorage(tempDir);
+        String absoluteOutside = tempDir.getParent().resolve("evil.xlsx").toAbsolutePath().toString();
 
         assertThrows(ExportFileStorageException.class, () -> storage.store("../evil.xlsx", new byte[]{1}));
         assertThrows(ExportFileStorageException.class, () -> storage.load("export/../../evil.xlsx"));
-        assertThrows(ExportFileStorageException.class, () -> storage.delete("C:/windows/system32/evil.xlsx"));
+        assertThrows(ExportFileStorageException.class, () -> storage.delete(absoluteOutside));
         assertThrows(ExportFileStorageException.class, () -> storage.store(null, new byte[]{1}));
         assertThrows(ExportFileStorageException.class, () -> storage.store(" ", new byte[]{1}));
     }
