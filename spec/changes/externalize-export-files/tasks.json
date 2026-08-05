@@ -4,66 +4,66 @@
     "category": "阶段 1：存储抽象",
     "task": "存储接口与配置",
     "steps": [
-      { "step": "新增 ExportFileStorage 接口（store/load/delete）与 ExportFileStorageException", "completed": false },
-      { "step": "新增 LocalExportFileStorage：目录可配置、自动建目录、路径穿越防护、删除幂等", "completed": false },
-      { "step": "引入 io.minio:minio 依赖；新增 S3ExportFileStorage：endpoint/access-key/secret-key/bucket/region 配置、NoSuchKey 删除幂等", "completed": false },
-      { "step": "ExportProperties 扩展 storage.type/local/s3 与 backfill-enabled，非法配置启动快速失败", "completed": false }
+      { "step": "新增 ExportFileStorage 接口（store/load/delete）与 ExportFileStorageException", "completed": true },
+      { "step": "新增 LocalExportFileStorage：目录可配置、自动建目录、路径穿越防护、删除幂等", "completed": true },
+      { "step": "引入 io.minio:minio 依赖；新增 S3ExportFileStorage：endpoint/access-key/secret-key/bucket/region 配置、NoSuchKey 删除幂等", "completed": true },
+      { "step": "ExportProperties 扩展 storage.type/local/s3 与 backfill-enabled，非法配置启动快速失败", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "阶段 2：迁移与链路改造",
     "task": "V12 迁移与实体/仓库改造",
     "steps": [
-      { "step": "V12 新增 file_path VARCHAR(500)；实体新增 filePath、移除 fileContent 映射，succeed 改为接收 filePath", "completed": false },
-      { "step": "markSucceeded 改为写 file_path 并清空 file_content；新增存量迁移查询（file_path IS NULL AND file_content IS NOT NULL）与条件回填更新", "completed": false },
-      { "step": "worker：生成后先写存储再 markSucceeded(filePath)；状态未落库时回删文件", "completed": false },
-      { "step": "service：file() 按 file_path 打开流，缺失/不存在返回 404；cleanupExpired 先删存储文件再删行，失败保留行", "completed": false }
+      { "step": "V12 新增 file_path VARCHAR(500)；实体新增 filePath、移除 fileContent 映射，succeed 改为接收 filePath", "completed": true },
+      { "step": "markSucceeded 改为写 file_path 并清空 file_content；新增存量迁移查询（file_path IS NULL AND file_content IS NOT NULL）与条件回填更新", "completed": true },
+      { "step": "worker：生成后先写存储再 markSucceeded(filePath)；状态未落库时回删文件", "completed": true },
+      { "step": "service：file() 按 file_path 打开流，缺失/不存在返回 404；cleanupExpired 先删存储文件再删行，失败保留行", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 3,
     "category": "阶段 3：存量迁移器",
     "task": "LONGBLOB 启动迁移",
     "steps": [
-      { "step": "ExportFileMigrator：分批读取存量行，写入存储、条件回填 file_path、清空 file_content；单条失败记录日志继续", "completed": false },
-      { "step": "backfill-enabled=false 时启动不执行；多实例并发回填用条件更新保证幂等", "completed": false }
+      { "step": "ExportFileMigrator：分批读取存量行，写入存储、条件回填 file_path、清空 file_content；单条失败记录日志继续", "completed": true },
+      { "step": "backfill-enabled=false 时启动不执行；多实例并发回填用条件更新保证幂等", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 4,
     "category": "阶段 4：测试",
     "task": "单元测试",
     "steps": [
-      { "step": "LocalExportFileStorage 测试：store/load/delete、目录创建、路径穿越拒绝、删除幂等", "completed": false },
-      { "step": "ExportProperties 测试：local 默认、s3 必填校验、非法类型快速失败", "completed": false },
-      { "step": "ExportFileMigrator 测试：迁移成功清空、单条失败继续、回填竞争回删、开关关闭不执行", "completed": false },
-      { "step": "worker/service 测试适配：写存储后落状态、取消回删、下载流式、清理先删文件失败保留行", "completed": false }
+      { "step": "LocalExportFileStorage 测试：store/load/delete、目录创建、路径穿越拒绝、删除幂等", "completed": true },
+      { "step": "ExportProperties 测试：local 默认、s3 必填校验、非法类型快速失败", "completed": true },
+      { "step": "ExportFileMigrator 测试：迁移成功清空、单条失败继续、回填竞争回删、开关关闭不执行", "completed": true },
+      { "step": "worker/service 测试适配：写存储后落状态、取消回删、下载流式、清理先删文件失败保留行", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 5,
     "category": "阶段 4：测试",
     "task": "集成与迁移回归",
     "steps": [
-      { "step": "HTTP 集成测试：导出任务落盘后下载成功、用户隔离、未完成 409 保持", "completed": false },
-      { "step": "Testcontainers MySQL：V1-V12 双跑全成功；全上下文启动时手工造存量 LONGBLOB 行并调用迁移器，验证落盘、回填与清空", "completed": false }
+      { "step": "HTTP 集成测试：导出任务落盘后下载成功、用户隔离、未完成 409 保持", "completed": true },
+      { "step": "Testcontainers MySQL：V1-V12 双跑全成功；全上下文启动时手工造存量 LONGBLOB 行并调用迁移器，验证落盘、回填与清空", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 6,
     "category": "阶段 5：交付",
     "task": "文档与全量交付",
     "steps": [
-      { "step": "更新 application.yml、.env.example、README、optimization-plan（存储配置、迁移说明、file_content 下线提示）", "completed": false },
-      { "step": "mvn test 全绿（含 Testcontainers）；本地 MySQL 冒烟：新任务落盘下载、存量行迁移、清理删文件", "completed": false },
-      { "step": "单 PR 合入，CI 通过后关 Issue #86", "completed": false }
+      { "step": "更新 application.yml、.env.example、README、optimization-plan（存储配置、迁移说明、file_content 下线提示）", "completed": true },
+      { "step": "mvn test 全绿（含 Testcontainers）；本地 MySQL 冒烟：新任务落盘下载、存量行迁移、清理删文件", "completed": true },
+      { "step": "单 PR 合入，CI 通过后关 Issue #86", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]

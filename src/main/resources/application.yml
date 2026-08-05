@@ -54,6 +54,19 @@ app:
     max-days: 1826
     max-pending-per-user: 5
     retention-days: 7
+    backfill-enabled: ${EXPORT_STORAGE_BACKFILL_ENABLED:true}
+    storage:
+      # local = filesystem under storage.local.directory (default);
+      # s3 = S3-compatible object storage via the MinIO client.
+      type: ${EXPORT_STORAGE_TYPE:local}
+      local:
+        directory: ${EXPORT_STORAGE_LOCAL_DIRECTORY:./data/exports}
+      s3:
+        endpoint: ${EXPORT_S3_ENDPOINT:}
+        access-key: ${EXPORT_S3_ACCESS_KEY:}
+        secret-key: ${EXPORT_S3_SECRET_KEY:}
+        bucket: ${EXPORT_S3_BUCKET:}
+        region: ${EXPORT_S3_REGION:us-east-1}
   health:
     minimum-sleep-minutes: 420
     maximum-sleep-minutes: 540

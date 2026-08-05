@@ -8,6 +8,8 @@ import com.fzdzzj.lifehabitassistant.pojo.ExportTask;
 import com.fzdzzj.lifehabitassistant.pojo.ReportDtos;
 import com.fzdzzj.lifehabitassistant.pojo.User;
 import com.fzdzzj.lifehabitassistant.server.dao.ExportTaskRepository;
+import com.fzdzzj.lifehabitassistant.server.service.ExportFileStorage;
+import com.fzdzzj.lifehabitassistant.server.service.ExportFileKeys;
 import com.fzdzzj.lifehabitassistant.server.service.ExportTaskWorker;
 import com.fzdzzj.lifehabitassistant.server.service.ReportExporter;
 import com.fzdzzj.lifehabitassistant.server.service.ReportService;
@@ -33,8 +35,9 @@ class ExportTaskWorkerTest {
         ExportTaskRepository tasks = mock(ExportTaskRepository.class);
         ReportService reports = mock(ReportService.class);
         ReportExporter exporter = mock(ReportExporter.class);
+        ExportFileStorage storage = mock(ExportFileStorage.class);
         when(tasks.markRunning(eq(1L), any())).thenReturn(0);
-        ExportTaskWorker worker = worker(tasks, reports, exporter);
+        ExportTaskWorker worker = worker(tasks, reports, exporter, storage);
 
         worker.generate(1L);
 
@@ -47,6 +50,7 @@ class ExportTaskWorkerTest {
         ExportTaskRepository tasks = mock(ExportTaskRepository.class);
         ReportService reports = mock(ReportService.class);
         ReportExporter exporter = mock(ReportExporter.class);
+        ExportFileStorage storage = mock(ExportFileStorage.class);
         User user = new User("demo", "hash");
         ExportTask task = new ExportTask(user, ExportReportType.CUSTOM, ExportFormat.XLSX,
                 LocalDate.of(2026, 1, 1), LocalDate.of(2026, 6, 30));
@@ -55,15 +59,18 @@ class ExportTaskWorkerTest {
         when(tasks.findWithUserById(1L)).thenReturn(Optional.of(task));
         when(reports.customForUser(user, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 6, 30))).thenReturn(report);
         when(exporter.xlsx(report)).thenReturn(new byte[]{1, 2, 3});
-        when(tasks.markSucceeded(eq(1L), eq("life-habit-custom-2026-01-01_2026-06-30.xlsx"),
-                eq(new byte[]{1, 2, 3}), any())).thenReturn(1);
-        ExportTaskWorker worker = worker(tasks, reports, exporter);
+        String fileName = "life-habit-custom-2026-01-01_2026-06-30.xlsx";
+        String key = ExportFileKeys.key(1L, fileName);
+        when(storage.store(eq(key), eq(new byte[]{1, 2, 3}))).thenReturn(key);
+        when(tasks.markSucceeded(eq(1L), eq(fileName), eq(key), any())).thenReturn(1);
+        ExportTaskWorker worker = worker(tasks, reports, exporter, storage);
 
         worker.generate(1L);
 
-        verify(tasks).markSucceeded(eq(1L), eq("life-habit-custom-2026-01-01_2026-06-30.xlsx"),
-                eq(new byte[]{1, 2, 3}), any());
+        verify(storage).store(eq(key), eq(new byte[]{1, 2, 3}));
+        verify(tasks).markSucceeded(eq(1L), eq(fileName), eq(key), any());
         verify(tasks, never()).save(any());
+        verify(storage, never()).delete(any());
     }
 
     @Test
@@ -71,6 +78,7 @@ class ExportTaskWorkerTest {
         ExportTaskRepository tasks = mock(ExportTaskRepository.class);
         ReportService reports = mock(ReportService.class);
         ReportExporter exporter = mock(ReportExporter.class);
+        ExportFileStorage storage = mock(ExportFileStorage.class);
         User user = new User("demo", "hash");
         ExportTask task = new ExportTask(user, ExportReportType.CUSTOM, ExportFormat.XLSX,
                 LocalDate.of(2026, 1, 1), LocalDate.of(2026, 6, 30));
@@ -78,7 +86,7 @@ class ExportTaskWorkerTest {
         when(tasks.findWithUserById(1L)).thenReturn(Optional.of(task));
         when(reports.customForUser(any(), any(), any())).thenThrow(new IllegalStateException("boom"));
         when(tasks.markFailed(eq(1L), eq("boom"), any())).thenReturn(1);
-        ExportTaskWorker worker = worker(tasks, reports, exporter);
+        ExportTaskWorker worker = worker(tasks, reports, exporter, storage);
 
         worker.generate(1L);
 
@@ -91,6 +99,7 @@ class ExportTaskWorkerTest {
         ExportTaskRepository tasks = mock(ExportTaskRepository.class);
         ReportService reports = mock(ReportService.class);
         ReportExporter exporter = mock(ReportExporter.class);
+        ExportFileStorage storage = mock(ExportFileStorage.class);
         User user = new User("demo", "hash");
         ExportTask task = new ExportTask(user, ExportReportType.CUSTOM, ExportFormat.XLSX,
                 LocalDate.of(2026, 1, 1), LocalDate.of(2026, 6, 30));
@@ -99,12 +108,14 @@ class ExportTaskWorkerTest {
         when(reports.customForUser(user, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 6, 30)))
                 .thenReturn(report());
         when(exporter.xlsx(any())).thenReturn(new byte[]{1, 2, 3});
+        when(storage.store(any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(tasks.markSucceeded(eq(1L), any(), any(), any())).thenReturn(0);
-        ExportTaskWorker worker = worker(tasks, reports, exporter);
+        ExportTaskWorker worker = worker(tasks, reports, exporter, storage);
 
         worker.generate(1L);
 
         verify(tasks).markSucceeded(eq(1L), any(), any(), any());
+        verify(storage).delete(ExportFileKeys.key(1L, "life-habit-custom-2026-01-01_2026-06-30.xlsx"));
         verify(tasks, never()).save(any());
     }
 
@@ -113,6 +124,7 @@ class ExportTaskWorkerTest {
         ExportTaskRepository tasks = mock(ExportTaskRepository.class);
         ReportService reports = mock(ReportService.class);
         ReportExporter exporter = mock(ReportExporter.class);
+        ExportFileStorage storage = mock(ExportFileStorage.class);
         User user = new User("demo", "hash");
         ExportTask task = new ExportTask(user, ExportReportType.CUSTOM, ExportFormat.XLSX,
                 LocalDate.of(2026, 1, 1), LocalDate.of(2026, 6, 30));
@@ -120,7 +132,7 @@ class ExportTaskWorkerTest {
         when(tasks.findWithUserById(1L)).thenReturn(Optional.of(task));
         when(reports.customForUser(any(), any(), any())).thenThrow(new IllegalStateException("boom"));
         when(tasks.markFailed(eq(1L), eq("boom"), any())).thenReturn(0);
-        ExportTaskWorker worker = worker(tasks, reports, exporter);
+        ExportTaskWorker worker = worker(tasks, reports, exporter, storage);
 
         worker.generate(1L);
 
@@ -128,8 +140,9 @@ class ExportTaskWorkerTest {
         verify(tasks, never()).save(any());
     }
 
-    private ExportTaskWorker worker(ExportTaskRepository tasks, ReportService reports, ReportExporter exporter) {
-        return new ExportTaskWorker(tasks, reports, exporter);
+    private ExportTaskWorker worker(ExportTaskRepository tasks, ReportService reports, ReportExporter exporter,
+                                    ExportFileStorage storage) {
+        return new ExportTaskWorker(tasks, reports, exporter, storage);
     }
 
     private ReportDtos.ReportResponse report() {

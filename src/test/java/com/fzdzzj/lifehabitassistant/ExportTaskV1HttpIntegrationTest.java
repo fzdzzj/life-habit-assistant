@@ -246,7 +246,7 @@ class ExportTaskV1HttpIntegrationTest {
     private ExportTask succeededTask(User user) {
         ExportTask task = new ExportTask(user, ExportReportType.CUSTOM, ExportFormat.XLSX,
                 LocalDate.of(2026, 1, 1), LocalDate.of(2026, 6, 30));
-        task.succeed(new byte[]{1, 2, 3}, "life-habit-custom-2026-01-01_2026-06-30.xlsx");
+        task.succeed("export/succeeded.xlsx", "life-habit-custom-2026-01-01_2026-06-30.xlsx");
         return task;
     }
 

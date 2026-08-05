@@ -25,11 +25,14 @@ public class ExportTaskWorker {
     private final ExportTaskRepository tasks;
     private final ReportService reports;
     private final ReportExporter exporter;
+    private final ExportFileStorage storage;
 
-    public ExportTaskWorker(ExportTaskRepository tasks, ReportService reports, ReportExporter exporter) {
+    public ExportTaskWorker(ExportTaskRepository tasks, ReportService reports, ReportExporter exporter,
+                            ExportFileStorage storage) {
         this.tasks = tasks;
         this.reports = reports;
         this.exporter = exporter;
+        this.storage = storage;
     }
 
     @Async("exportTaskExecutor")
@@ -53,8 +56,11 @@ public class ExportTaskWorker {
             String extension = task.getFormat() == ExportFormat.XLSX ? "xlsx" : "pdf";
             String fileName = "life-habit-" + task.getReportType().name().toLowerCase() + "-"
                     + task.getPeriodStart() + "_" + task.getPeriodEnd() + "." + extension;
-            int saved = tasks.markSucceeded(taskId, fileName, bytes, LocalDateTime.now());
+            String filePath = ExportFileKeys.key(taskId, fileName);
+            storage.store(filePath, bytes);
+            int saved = tasks.markSucceeded(taskId, fileName, filePath, LocalDateTime.now());
             if (saved != 1) {
+                storage.delete(filePath);
                 log.info("Export task {} was cancelled before the file could be persisted", taskId);
             }
         } catch (Exception ex) {
