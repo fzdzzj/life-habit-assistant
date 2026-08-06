@@ -50,6 +50,17 @@ mvn test
 mvn spring-boot:run -Dspring-boot.run.profiles=demo
 ```
 
+## 生产部署（Docker Compose）
+
+仓库提供完整的单机生产化部署：多阶段镜像、MySQL + 应用 + 定时备份容器、ECS 结构化日志与滚动、可选 Prometheus/Grafana/Loki 监控栈。详见 [生产化部署指南](docs/deployment.md)。
+
+```bash
+Copy-Item .env.example .env   # 填写 DB_PASSWORD / MYSQL_ROOT_PASSWORD / JWT_SECRET
+docker compose up -d --build
+```
+
+核心服务（mysql、app、backup）默认随 compose 启动；监控栈用 `docker compose --profile monitoring up -d` 单独拉起。app 使用 `prod` Profile，关闭 Swagger。
+
 ## 接口
 
 先调用注册或登录，随后在 Swagger 的 **Authorize** 中填写 `Bearer <token>`。
@@ -220,6 +231,6 @@ AI 建议默认关闭，且只在用户显式调用 `POST /api/ai/...` 时触发
 
 ## 数据库迁移
 
-数据库结构由 Flyway 管理，迁移文件位于 `src/main/resources/db/migration/`（当前 V1–V11）。新环境只需先创建空数据库，应用启动时会自动执行 `V1__create_initial_schema.sql` 并记录到 `flyway_schema_history`；不再手工执行 SQL 文件。
+数据库结构由 Flyway 管理，迁移文件位于 `src/main/resources/db/migration/`（当前 V1–V12）。新环境只需先创建空数据库，应用启动时会自动执行 `V1__create_initial_schema.sql` 并记录到 `flyway_schema_history`；不再手工执行 SQL 文件。
 
 对于已经用旧版 `schema.sql` 建过表的数据库：仅在第一次启动前设置 `FLYWAY_BASELINE_ON_MIGRATE=true`，让 Flyway 建立基线而不重复执行 V1；启动成功后应删除该变量或改回 `false`。后续表结构调整只能新增 `V2__...sql`、`V3__...sql`，不能修改已经发布的迁移文件。

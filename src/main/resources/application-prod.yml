@@ -8,3 +8,22 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+
+logging:
+  file:
+    name: ${LOG_FILE:logs/app.log}
+  logback:
+    rollingpolicy:
+      max-file-size: ${LOG_MAX_FILE_SIZE:50MB}
+      max-history: ${LOG_MAX_HISTORY:7}
+      total-size-cap: ${LOG_TOTAL_SIZE_CAP:500MB}
+  structured:
+    format:
+      console: ecs
+      file: ecs
