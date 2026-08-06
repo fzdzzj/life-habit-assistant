@@ -1,0 +1,69 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：容器镜像",
+    "task": "多阶段 Dockerfile 与镜像参数化",
+    "steps": [
+      { "step": "多阶段 Dockerfile：maven:3.9-eclipse-temurin-21 构建（go-offline + package -DskipTests）→ eclipse-temurin:21-jre-jammy 运行；非 root、Asia/Shanghai、MaxRAMPercentage、curl 健康检查", "completed": true },
+      { "step": "基础镜像通过 BUILD_IMAGE/RUNTIME_IMAGE build arg 参数化，国内环境可传镜像加速器前缀；.dockerignore 排除 .git/target/data/.env", "completed": true },
+      { "step": "入口脚本 deploy/entrypoint.sh 避免 Dockerfile JSON 转义问题，JAVA_OPTS 可注入", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：Compose 编排",
+    "task": "MySQL + app + 卷与健康依赖",
+    "steps": [
+      { "step": "mysql：utf8mb4、mysqladmin 健康检查、3307 宿主映射、mysql_data 卷；MYSQL_USER 拒绝 root，容器专用账号由 MYSQL_USER/MYSQL_PASSWORD 提供", "completed": true },
+      { "step": "app：prod Profile、DB_HOST 覆盖为 mysql、export_data/app_logs 卷、curl 健康检查、restart unless-stopped；全局 json-file 日志轮转 20MB×5", "completed": true },
+      { "step": "必填变量用 :? 快速失败；全部镜像 tag 可用变量覆盖（MYSQL_IMAGE/APP_IMAGE/BACKUP_IMAGE_TAG 等）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：定时备份",
+    "task": "MySQL 官方客户端 + cronie 备份容器",
+    "steps": [
+      { "step": "backup 镜像基于 mysql:8.0 官方客户端（支持 caching_sha2_password）+ cronie；entrypoint 写入 BACKUP_CRON 并前台运行 crond", "completed": true },
+      { "step": "backup.sh：--single-transaction --routines --triggers --hex-blob --no-tablespaces，gzip + gzip -t 校验，按 BACKUP_KEEP_DAYS 清理过期备份，失败不留残文件", "completed": true },
+      { "step": "compose 健康检查基于 crond.pid；文档提供手动触发与恢复命令", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：日志与指标",
+    "task": "ECS 结构化日志、滚动与 Prometheus 指标",
+    "steps": [
+      { "step": "application-prod.yml：logging.structured.format.console/file=ecs、logback 滚动（50MB/7 份/500MB）、actuator 暴露 health,info,prometheus", "completed": true },
+      { "step": "pom.xml 新增 micrometer-registry-prometheus；SecurityConfig 放行 /actuator/prometheus", "completed": true },
+      { "step": "本机 prod 容器验证：控制台与 logs/app.log 均为 ECS JSON，/actuator/prometheus 返回 JVM/HTTP 指标", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 4：日志与指标",
+    "task": "可选监控栈（Prometheus + Grafana + Loki + Promtail）",
+    "steps": [
+      { "step": "monitoring profile：prometheus 抓 app:8080/actuator/prometheus；loki 单机文件存储（保留 168h、delete_request_store=filesystem）；promtail 读 app_logs 卷并解析 ECS JSON（@timestamp 引号转义）", "completed": true },
+      { "step": "grafana 自动 provisioning Prometheus/Loki 数据源，管理员账号密码由 .env 配置", "completed": true },
+      { "step": "本机验证：Prometheus target UP、Loki ready 且 query_range 返回 {job=\"life-habit-assistant\"} 日志流、Grafana /api/datasources 返回双数据源", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 5：交付",
+    "task": "文档、CI 与全量验收",
+    "steps": [
+      { "step": "新增 docs/deployment.md（架构/启动/卷/备份恢复/日志/监控/镜像加速/S3/升级/故障表）；README 增加部署入口并修正 V1-V12；.env.example 补全部部署变量；optimization-plan 追加本轮记录", "completed": true },
+      { "step": "CI 新增 docker-build job 验证镜像可构建；mvn test 272 项 0 失败 0 跳过", "completed": true },
+      { "step": "本机 compose 冒烟：三服务 healthy、备份生成/解压/清理、ECS 日志、prometheus 指标、监控栈日志链路、API 注册→录数→导出→下载", "completed": true },
+      { "step": "单 PR 合入，CI 通过后关 Issue #89", "completed": true }
+    ],
+    "passes": true
+  }
+]

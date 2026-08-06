@@ -49,7 +49,7 @@ public class SecurityConfig {
                 .exceptionHandling(e -> e.authenticationEntryPoint(authenticationEntryPoint))
                 .authorizeHttpRequests(a -> a.requestMatchers(
                                 "/api/auth/**", "/api/v1/auth/**", "/swagger-ui/**", "/swagger-ui.html",
-                                "/v3/api-docs/**", "/actuator/health/**", "/error")
+                                "/v3/api-docs/**", "/actuator/health/**", "/actuator/prometheus/**", "/error")
                         .permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class)

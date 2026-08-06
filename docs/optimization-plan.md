@@ -177,6 +177,19 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 
 > 取舍：`file_content` 列本期保留（供迁移读取），确认迁移完成后可在后续独立迁移中 DROP，避免旧库升级即丢数据；下载用 `Resource` 流式而非分片，报表量级足够，不引入 Range 支持。
 
+### 生产化部署（Issue #89）
+
+| 优化项 | 问题 | 方案 | 落点 | 验证 |
+| --- | --- | --- | --- | --- |
+| 容器镜像 | 无镜像，部署依赖本机 JDK/Maven/MySQL | 多阶段 Dockerfile（maven:3.9-eclipse-temurin-21 构建 → eclipse-temurin:21-jre 运行）：非 root 用户、Asia/Shanghai 时区、JVM 容器感知参数（MaxRAMPercentage）、actuator 健康检查、`.dockerignore` | [Dockerfile](../Dockerfile)、[.dockerignore](../.dockerignore) | CI 新增 docker-build job；本地 `docker compose up -d --build` 全服务 healthy |
+| 一键编排 | MySQL/应用/备份/监控各自手工管理 | docker compose：mysql（utf8mb4、健康依赖）+ app（prod、导出/日志卷、restart）+ 可选 monitoring profile；容器日志统一 json-file 20MB×5 轮转 | [docker-compose.yml](../docker-compose.yml) | 本机冒烟：app healthy、导出任务落盘、下载正常 |
+| 定时备份 | 数据库无备份，数据丢失不可恢复 | backup 容器（alpine + mysqldump）：每日 `BACKUP_CRON`（默认 03:00）全量导出并 gzip，`--single-transaction --routines --triggers --hex-blob`，`gzip -t` 校验，按 `BACKUP_KEEP_DAYS` 保留；支持 `docker compose exec backup backup.sh` 手动触发 | [deploy/backup](../deploy/backup) | 本机手动触发生成 `.sql.gz` 且可解压；保留策略由脚本 find 删除覆盖 |
+| 日志与指标 | prod 只有普通文本日志、无指标端点 | prod Profile：ECS 结构化日志（控制台+文件）、logback 滚动（50MB×7/500MB）；actuator 暴露 `info,prometheus`；新增 micrometer-registry-prometheus；Security 放行 `/actuator/prometheus` | [application-prod.yml](../src/main/resources/application-prod.yml)、[SecurityConfig.java](../src/main/java/com/fzdzzj/lifehabitassistant/config/SecurityConfig.java)、pom.xml | 本地 prod 启动输出 ECS JSON；`/actuator/prometheus` 200 且含 jvm/process 指标 |
+| 监控栈 | 指标/日志无统一查看入口 | monitoring profile：prometheus（抓 app 指标，保留 168h）+ loki（保留 168h）+ promtail（读日志卷 ECS JSON）+ grafana（自动配置双数据源，`.env` 可改管理员密码） | [deploy/monitoring](../deploy/monitoring) | 本机拉起后 Prometheus target UP、Loki ready、Grafana Explore 可查 `{job="life-habit-assistant"}` |
+| 文档 | 部署知识散落 README | 新增 [deployment.md](../docs/deployment.md)（架构、启动、卷、备份/恢复、日志、监控、S3、升级、故障表）；README 增加部署入口；`.env.example` 补部署变量 | [deployment.md](../docs/deployment.md)、[.env.example](../.env.example)、[README.md](../README.md) | 文档随 PR 评审 |
+
+> 取舍：默认 compose 只起核心三服务，监控栈用 profile 按需启用，避免个人主机常驻空跑；`/actuator/prometheus` 与 `/actuator/health` 一致不加密，适合内网单机，对外暴露需反向代理加认证。镜像只本地构建不打注册表；不引入 K8s/负载均衡/Redis。
+
 ## 三、关键取舍（防止“换个思路做坏”的约束）
 
 - **配额为什么用独立表而不是历史表计数**：历史表无法区分“调用失败（应计费）”和“未调用降级（不应计费）”；独立表只记录已发起的模型请求，语义干净。
@@ -230,3 +243,4 @@ P0 安全项独立执行：注册/登录限流（Issue #46 / PR #47，见二）�
 - [x] AI 对话流式输出：`mvn test` 238 项通过、0 失败、0 跳过（含 Testcontainers 两用例）；SSE 事件协议、降级/取消/替换/断开语义、同会话单任务互斥、越权与异步鉴权恢复全部覆盖。
 - [x] AI 解读结构化输出与同周期结果缓存：`mvn test` 251 项通过、0 失败、0 跳过（含 Testcontainers 两用例）；结构化输出成功/畸形/字段缺失降级、缓存命中/刷新/写路径失效/降级不缓存全部覆盖；本地 MySQL 冒烟验证 AI 解读 `cached=false`、`refresh=true`、流式 SSE `event:fallback` 与取消 409（无 API key 时验证 fallback 路径，缓存命中语义由单元测试覆盖）。
 - [x] 导出文件外置：`mvn test` 272 项通过、0 失败、0 跳过（含 Testcontainers 两用例）；local/S3 存储、存量 LONGBLOB 启动迁移（真实 MySQL 验证落盘/回填/清空）、下载流式、清理先删文件失败保留行全部覆盖；本地 MySQL 冒烟见 Issue #86。
+- [x] 生产化部署：`mvn test` 272 项全绿；compose 核心三服务 healthy；手动备份 `.sql.gz` 可解压且过期文件按策略清理；ECS 日志与 `/actuator/prometheus` 可用；监控 profile 拉起后 Prometheus UP、Loki 收到日志、Grafana 双数据源就绪；API 冒烟（注册→录数→导出→下载）通过；CI docker-build 通过（Issue #89）。
